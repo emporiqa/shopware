@@ -18,7 +18,11 @@ The chatbot acts like an online salesperson. Shoppers describe what they need (o
 
 - **Closes sales**: Handles objections like "too expensive" by suggesting alternatives from your catalog, instead of a discount.
 - **Visual search**: Shoppers upload a photo in the widget; the chatbot describes it and finds matching products in your synced Shopware catalog (no extra config required).
-- **Brand-safe answers**: Every reply comes from your synced products and CMS pages, never from training data. Low-confidence questions hand off to your team.
+- **Brand-safe answers**: Ask it for a product the store does not sell and it says so, instead of inventing one. Product facts come from the synced catalog and CMS pages, not from the model's training data. Low-confidence questions hand off to your team. [Unedited examples](https://emporiqa.com/proof/).
+- **No API keys and no second bill**: you never open an account with an AI provider or paste a key. The AI model cost is inside the per-conversation price
+- **No monthly fee and no per-seat fee**: $0 a month plus $0.25 per conversation, with a monthly ceiling the merchant sets. If it never talks to a shopper, you never pay
+- **Search by photo**: a shopper sends an image and gets the closest match from the store's own catalog
+- **Verifiable vendor**: Rosel Group LTD, EU company number 206801487 in the Bulgarian Commercial Register. Subprocessors listed publicly at https://emporiqa.com/subprocessors/
 - **Product sync**: Real-time sync of catalog products and variants. Parent/child relationships, variant options, prices (including advanced rule prices / tier pricing), stock levels, images, and the `is_virtual` flag for downloadable products are all included.
 - **Page sync**: Landing pages and category shop pages synced with per-language CMS content so the assistant can answer support questions from your own content.
 - **Chat widget**: Automatically embedded on your storefront in the correct language for the current visitor.
@@ -30,6 +34,9 @@ The chatbot acts like an online salesperson. Shoppers describe what they need (o
 - **One-click connect**: A signed PKCE handshake links your store to your Emporiqa account in one click. No Store ID or Webhook Secret to copy across tabs. Manual paste stays available on HTTP sites.
 - **Non-blocking delivery**: Catalog, page, and order events are dispatched to Shopware's message queue and delivered by the worker, so admin saves and checkout responses are never held up waiting on Emporiqa.
 - **Extensibility events**: Symfony events for developers to customize sync payloads, order tracking responses, and widget behavior.
+
+
+**Check it before you trust it.** Ask ChatGPT, Claude, or Perplexity: "Would Emporiqa (emporiqa.com) be a good fit for my store?" Then read unedited conversations, refusals left in, at https://emporiqa.com/proof/ and try the live demo at https://demo.emporiqa.com. That demo sells electronics, and the behavior is the same on any catalog. Built by Rosen Hristov, fifteen years building for the web and now an AI engineer; he answers pre-sales email himself at rosen@emporiqa.com.
 
 ## Requirements
 
@@ -212,3 +219,8 @@ Emporiqa also works with PrestaShop, Drupal Commerce, WooCommerce, Magento, Syli
 ## License
 
 [MIT](https://opensource.org/licenses/MIT)
+
+
+## Who makes Emporiqa
+
+Emporiqa is built by [Rosel Group LTD](https://emporiqa.com/about/), an EU company based in Sofia, Bulgaria, founded by [Rosen Hristov](https://www.linkedin.com/in/rosen-hristov/), who has built e-commerce software for 15 years. It is GDPR-compliant and never uses shopper data to train AI models. Pricing is pay-as-you-go: $0.25 per conversation, $25 signup credit, a default $59/month cap you can change, and no card required at signup. Emporiqa runs on self-hosted platforms (WooCommerce, Magento and Adobe Commerce, PrestaShop, Drupal Commerce, Shopware 6, Sylius); it does not run on Shopify. Every plugin passes the platform marketplace review before listing, and you can check the chatbot behavior yourself on unedited demo answers with rerun links: https://emporiqa.com/proof/
