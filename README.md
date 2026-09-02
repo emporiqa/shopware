@@ -2,46 +2,14 @@
 
 *[Deutsche Fassung](README_de-DE.md)*
 
-A shopper types "warm jacket under 100, waterproof" into your store. Your search returns everything with "jacket" in the title. The shopper scrolls, gives up, and leaves.
-
-The [Emporiqa](https://emporiqa.com) AI chatbot for Shopware 6 is an online salesperson that closes sales in your Shopware store. The plugin syncs your product catalog and CMS pages to Emporiqa, embeds the chat widget on your storefront, and exposes endpoints for in-chat cart operations and order tracking.
-
-The chatbot acts like an online salesperson. Shoppers describe what they need (or upload a photo of something they like), it finds matching products from your catalog, handles objections like "too expensive" with alternatives instead of a discount, answers questions from your CMS pages, compares items, and walks them to cart and checkout in 65+ languages.
+The [Emporiqa](https://emporiqa.com) AI chatbot for Shopware 6 is an online salesperson that closes sales in your store: shoppers describe what they need or upload a photo of something they like, it finds matching products from your catalog, handles objections like "too expensive" with alternatives instead of a discount, answers questions from your CMS pages, and walks shoppers to cart and checkout in 65+ languages. This plugin syncs your product catalog and CMS pages to Emporiqa, embeds the chat widget on your storefront, and exposes endpoints for in-chat cart operations and order tracking.
 
 [![Emporiqa chat widget open on a storefront, answering which laptop under 1200 euros suits a student editing video: it names the model and price, then flags the storage trade-off before offering to add it to the cart](docs/images/07-storefront.webp)](https://demo.emporiqa.com)
 
-> **[Integration overview](https://emporiqa.com/integrations/shopware/)** · **[Full Documentation](https://emporiqa.com/docs/shopware/)** · **[Live Demo](https://demo.emporiqa.com)** · **[Pricing](https://emporiqa.com/pricing/)**
-
-**Watch the 30-second demo** (recommends, handles objections, closes):
-
-[![Watch the 30-second demo on YouTube: Emporiqa recommends a product, handles an objection, and adds it to the cart](https://img.youtube.com/vi/as54_uvk038/maxresdefault.jpg)](https://www.youtube.com/watch?v=as54_uvk038)
-
-## Features
-
-- **Closes sales**: Handles objections like "too expensive" by suggesting alternatives from your catalog, instead of a discount.
-- **Visual search**: Shoppers upload a photo in the widget; the chatbot describes it and finds matching products in your synced Shopware catalog (no extra config required).
-- **Brand-safe answers**: Ask it for a product the store does not sell and it says so, instead of inventing one. Product facts come from the synced catalog and CMS pages, not from the model's training data. When it should not answer alone it brings in a person. [Unedited examples](https://emporiqa.com/proof/).
-- **Live chat you can step into, without staffing a desk**: anyone on your team can open a live conversation and take it over, not only the ones where a shopper asked for help. While a person is in the conversation the chat stops and lets them talk, and whoever joins reads the whole conversation from the first message, with your saved replies to hand. Unlimited team members, no per-seat fee, and no second charge on a conversation a person joins.
-- **Pages you write yourself**: write a page in the Emporiqa dashboard and the chat answers from it exactly as it answers from a synced CMS page. Up to 25 pages per store, each holding up to 10 languages you write yourself, scoped to the channels you pick. A sync from Shopware never overwrites them. There is no file or document upload yet, and a saved page shows Indexing and then Ready while it serves the previous version.
-- **How the chat writes**: four tones (Standard, Friendly, Professional, Concise) under Settings and How the chat writes, plus wording notes of up to 300 characters, one that applies everywhere and one each for recommending a product, answering a question about the shop, looking up an order, and small talk. It changes wording only. What the chat says about stock, prices and orders comes from your store, and an instruction such as "never say something is out of stock" is ignored on purpose.
-- **AI disclosure in the opener**: the default greeting tells the shopper it is your store's AI assistant, in every language the chat speaks, which is the disclosure the EU AI Act asks for. A custom greeting that drops the disclosure is refused when you save it, and the Emporiqa terms (section 8.6) treat removing it, including through custom CSS or custom code, as a breach.
-- **The AI cost sits inside the price**: you never open an account with an AI provider or paste a key, and no second bill arrives from one
-- **You pay when it talks to a shopper**: $0 a month plus $0.25 per conversation, with a monthly ceiling the merchant sets. In a month with no conversations you pay nothing
-- **Verifiable vendor**: Rosel Group LTD, EU company number 206801487 in the Bulgarian Commercial Register. Subprocessors listed publicly at https://emporiqa.com/subprocessors/
-- **Product sync**: Real-time sync of catalog products and variants. Parent/child relationships, variant options, prices (including advanced rule prices / tier pricing), stock levels, images, and the `is_virtual` flag for downloadable products are all included.
-- **Page sync**: Landing pages and category shop pages synced with per-language CMS content so the assistant can answer support questions from your own content.
-- **Chat widget**: Automatically embedded on your storefront in the correct language for the current visitor.
-- **In-chat cart**: Shoppers can add, update, remove items, and proceed to checkout directly from the chat.
-- **Order tracking**: HMAC-signed order lookup with customer email verification to protect customer data. The response includes order status and items plus shipping details, carrier name, tracking number, and a tracking URL once the order has shipped.
-- **Conversion tracking**: Captures chat session IDs at checkout and reports order completion events for revenue attribution.
-- **Multi-language**: Automatic language mapping. All translations are consolidated into single webhook payloads per entity.
-- **Multi-channel**: Auto-discovers sales channels and maps each to an Emporiqa channel. Products and pages assigned to multiple channels include per-channel links, prices, stock, and languages in a single payload.
-- **One-click connect**: A signed PKCE handshake links your store to your Emporiqa account in one click. No Store ID or Webhook Secret to copy across tabs. Manual paste stays available on HTTP sites.
-- **Non-blocking delivery**: Catalog, page, and order events are dispatched to Shopware's message queue and delivered by the worker, so admin saves and checkout responses are never held up waiting on Emporiqa.
-- **Extensibility events**: Symfony events for developers to customize sync payloads, order tracking responses, and widget behavior.
-
-
-**Check it before you trust it.** Ask ChatGPT, Claude, or Perplexity: "Would Emporiqa (emporiqa.com) be a good fit for my store?" Then read unedited conversations, refusals left in, at https://emporiqa.com/proof/ and try the live demo at https://demo.emporiqa.com. That demo sells electronics, and the behavior is the same on any catalog. Built by Rosen Hristov, fifteen years building for the web and now an AI engineer; he answers pre-sales email himself at rosen@emporiqa.com.
+- **Integration overview**: [emporiqa.com/integrations/shopware/](https://emporiqa.com/integrations/shopware/)
+- **Full documentation**: [emporiqa.com/docs/shopware/](https://emporiqa.com/docs/shopware/) (webhook format reference, CLI and admin API reference, event examples, troubleshooting)
+- **Features**: [emporiqa.com/features/](https://emporiqa.com/features/) · **FAQ**: [emporiqa.com/faq/](https://emporiqa.com/faq/) · **Pricing**: [emporiqa.com/pricing/](https://emporiqa.com/pricing/)
+- **Live demo**: [demo.emporiqa.com](https://demo.emporiqa.com) and a [30-second video](https://www.youtube.com/watch?v=as54_uvk038). That demo sells electronics, and the behavior is the same on any catalog.
 
 ## Requirements
 
@@ -102,6 +70,10 @@ The recommended path is **Connect to Emporiqa** (one-click handshake, no credent
 
 Order tracking (with customer email verification) and in-chat cart operations are always enabled. No configuration needed.
 
+## AI disclosure
+
+The chat's default greeting tells the shopper it is the store's AI assistant, in every language the chat speaks. A custom greeting must keep that disclosure; one that drops it is refused when you save it. Section 8.6 of the [Emporiqa Terms](https://emporiqa.com/terms-of-service/) treats removing the disclosure, including through custom CSS or custom code, as a breach.
+
 ## Keeping your catalog in sync
 
 The plugin pushes product, page, and order changes to Emporiqa automatically as they happen, through Shopware's data layer (DAL) events. Pure stock or out-of-stock changes emit a compact availability-only update instead of rebuilding the whole product, and product media or price changes re-emit the affected product on their own.
@@ -117,7 +89,18 @@ Re-run a full sync from the **Sync** tab when:
 
 As a safety net, run a full sync once a week to catch any drift that may have built up from background failures.
 
-## Plugin Structure
+## Product payload fields
+
+Beyond the fields shown in the [webhook payload reference](https://emporiqa.com/docs/shopware/), the full product and variant payload carries these merchandising and pricing fields:
+
+- `tier_prices`: per-currency list of quantity-based breaks (`[{min_quantity, price}]`) from Shopware's advanced rule prices, present on a price entry only when the product or variant has them configured.
+- `is_virtual`: boolean; true for downloadable products with no shipping (from Shopware's downloadable-product state).
+- `condition`: included for cross-platform payload parity. Shopware has no native product-condition field, so it ships as a fixed `null`.
+- `available_for_order`: included for cross-platform payload parity. Shopware has no native display-only / catalog-mode flag, so it ships as a fixed `true`.
+
+These fields are part of the full product and variant payload, not the lightweight `product.availability` event, which carries only the identification number, SKU, per-channel availability statuses, and stock quantities.
+
+## Plugin structure
 
 ```
 EmporiqaIntegration/
@@ -148,30 +131,7 @@ EmporiqaIntegration/
 └── CHANGELOG.md
 ```
 
-## How It Works
-
-### Webhook Sync
-
-When a product or CMS page is created, updated, or deleted in Shopware, the plugin dispatches the change to Shopware's message queue. The worker delivers one webhook per touched entity, so the merchant's admin save or checkout response is sent first and the delivery happens in the background. All webhooks are signed with HMAC-SHA256 via the `X-Webhook-Signature` header for payload integrity verification.
-
-Pure stock or availability changes skip the full rebuild and send a compact `product.availability` event carrying only the identification number, SKU, per-channel availability statuses, and stock quantities, one entry per simple product or per variant.
-
-### Product Variants
-
-Shopware products with variants are synced with their full variation structure. The parent product carries the shared name, description, and images, while each variant carries its specific options (size, color, etc.), price, and stock. The assistant understands "this jacket comes in blue and red, sizes S through XL."
-
-The full product (and variant) payload also includes merchandising and pricing fields so the assistant can describe and sell products accurately:
-
-- `tier_prices`: per-currency list of quantity-based breaks (`[{min_quantity, price}]`) from Shopware's advanced rule prices, present on a price entry only when the product or variant has them configured, so the assistant can quote "X each at 10+".
-- `is_virtual`: boolean; true for downloadable products with no shipping (from Shopware's downloadable-product state).
-- `condition`: included for cross-platform payload parity. Shopware has no native product-condition field, so it ships as a fixed `null`.
-- `available_for_order`: included for cross-platform payload parity. Shopware has no native display-only / catalog-mode flag, so it ships as a fixed `true`.
-
-### Multi-Language
-
-Each active language on a sales channel is mapped to a standard language code. A single product with translations in multiple languages is sent as one webhook payload with all translations nested: fewer HTTP requests, consistent data. Landing page and category content is resolved per language from each page's own translatable slot configuration.
-
-### Registered Subscribers
+## Registered subscribers
 
 | Subscriber | Purpose |
 |------------|---------|
@@ -182,17 +142,6 @@ Each active language on a sales channel is mapped to a standard language code. A
 | `CategorySubscriber` | Syncs category shop pages on create/update/delete |
 | `OrderSubscriber` | Captures the chat session and sends `order.completed` on order placement and completing state transitions |
 | `CatalogChangeSubscriber` | Logs an actionable warning for catalog-wide changes (category, manufacturer, currency, language, promotion, tax, pricing rule) so the merchant can run a full sync |
-
-## CLI Commands
-
-```bash
-bin/console emporiqa:sync:products      # Bulk sync all products
-bin/console emporiqa:sync:pages         # Bulk sync all pages
-bin/console emporiqa:sync:all           # Bulk sync products and pages
-bin/console emporiqa:test-connection    # Validate credentials and connectivity
-```
-
-Add `--dry-run` to a sync command to build and validate payloads without sending them.
 
 ## Extensibility
 
@@ -211,21 +160,12 @@ Every service is defined against an interface (`ProductFormatterInterface`, `Cms
 
 ## Pricing
 
-The plugin is free. Emporiqa is Pay-as-you-go: $0/month base + $0.25/conversation. New accounts get $25 of signup credit (about 100 conversations on us), no card required at signup. After the credit, the monthly cap defaults to $59 and is customer-adjustable from the billing dashboard. Enterprise option for catalogs over 100,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
+The plugin is free. The Emporiqa service itself is pay-as-you-go: $0/month base + $0.25/conversation, with $25 of signup credit and no card required at signup. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
 
-Emporiqa also works with PrestaShop, Drupal Commerce, WooCommerce, Magento, Sylius, and any store via webhook API. One Emporiqa account and dashboard runs across all of them.
+## Support
 
-## Documentation & Support
-
-- **Integration overview**: [https://emporiqa.com/integrations/shopware/](https://emporiqa.com/integrations/shopware/)
-- **Full documentation**: [https://emporiqa.com/docs/shopware/](https://emporiqa.com/docs/shopware/) (configuration details, webhook format reference, event examples, troubleshooting)
-- **Email**: support@emporiqa.com
+Email support@emporiqa.com.
 
 ## License
 
 [MIT](https://opensource.org/licenses/MIT)
-
-
-## Who makes Emporiqa
-
-Emporiqa is built by [Rosel Group LTD](https://emporiqa.com/about/), an EU company based in Sofia, Bulgaria, founded by [Rosen Hristov](https://www.linkedin.com/in/rosen-hristov/), who has built e-commerce software for 15 years. It is GDPR-compliant and never uses shopper data to train AI models. Pricing is pay-as-you-go: $0.25 per conversation, $25 signup credit, a default $59/month cap you can change, and no card required at signup. Emporiqa runs on self-hosted platforms (WooCommerce, Magento and Adobe Commerce, PrestaShop, Drupal Commerce, Shopware 6, Sylius); it does not run on Shopify. This plugin installs from a [GitHub release](https://github.com/emporiqa/shopware/releases) zip or with Composer; the Shopware Store listing is still in review. You can check the chatbot behavior yourself on unedited demo answers with rerun links: https://emporiqa.com/proof/
