@@ -1,4 +1,6 @@
-# Emporiqa Chat Assistant for Shopware 6
+# Emporiqa: AI Chatbot for Shopware 6
+
+*[Deutsche Fassung](README_de-DE.md)*
 
 A shopper types "warm jacket under 100, waterproof" into your store. Your search returns everything with "jacket" in the title. The shopper scrolls, gives up, and leaves.
 
@@ -6,7 +8,7 @@ The [Emporiqa](https://emporiqa.com) AI chatbot for Shopware 6 is an online sale
 
 The chatbot acts like an online salesperson. Shoppers describe what they need (or upload a photo of something they like), it finds matching products from your catalog, handles objections like "too expensive" with alternatives instead of a discount, answers questions from your CMS pages, compares items, and walks them to cart and checkout in 65+ languages.
 
-[![Emporiqa chat widget recommending wireless headphones from the store's catalog, with a product card showing price, stock, and an add-to-cart button](docs/images/product-search.jpg)](https://demo.emporiqa.com)
+[![Emporiqa chat widget open on a storefront, answering which laptop under 1200 euros suits a student editing video: it names the model and price, then flags the storage trade-off before offering to add it to the cart](docs/images/07-storefront.webp)](https://demo.emporiqa.com)
 
 > **[Integration overview](https://emporiqa.com/integrations/shopware/)** · **[Full Documentation](https://emporiqa.com/docs/shopware/)** · **[Live Demo](https://demo.emporiqa.com)** · **[Pricing](https://emporiqa.com/pricing/)**
 
@@ -18,10 +20,13 @@ The chatbot acts like an online salesperson. Shoppers describe what they need (o
 
 - **Closes sales**: Handles objections like "too expensive" by suggesting alternatives from your catalog, instead of a discount.
 - **Visual search**: Shoppers upload a photo in the widget; the chatbot describes it and finds matching products in your synced Shopware catalog (no extra config required).
-- **Brand-safe answers**: Ask it for a product the store does not sell and it says so, instead of inventing one. Product facts come from the synced catalog and CMS pages, not from the model's training data. Low-confidence questions hand off to your team. [Unedited examples](https://emporiqa.com/proof/).
-- **No API keys and no second bill**: you never open an account with an AI provider or paste a key. The AI model cost is inside the per-conversation price
-- **No monthly fee and no per-seat fee**: $0 a month plus $0.25 per conversation, with a monthly ceiling the merchant sets. If it never talks to a shopper, you never pay
-- **Search by photo**: a shopper sends an image and gets the closest match from the store's own catalog
+- **Brand-safe answers**: Ask it for a product the store does not sell and it says so, instead of inventing one. Product facts come from the synced catalog and CMS pages, not from the model's training data. When it should not answer alone it brings in a person. [Unedited examples](https://emporiqa.com/proof/).
+- **Live chat you can step into, without staffing a desk**: anyone on your team can open a live conversation and take it over, not only the ones where a shopper asked for help. While a person is in the conversation the chat stops and lets them talk, and whoever joins reads the whole conversation from the first message, with your saved replies to hand. Unlimited team members, no per-seat fee, and no second charge on a conversation a person joins.
+- **Pages you write yourself**: write a page in the Emporiqa dashboard and the chat answers from it exactly as it answers from a synced CMS page. Up to 25 pages per store, each holding up to 10 languages you write yourself, scoped to the channels you pick. A sync from Shopware never overwrites them. There is no file or document upload yet, and a saved page shows Indexing and then Ready while it serves the previous version.
+- **How the chat writes**: four tones (Standard, Friendly, Professional, Concise) under Settings and How the chat writes, plus wording notes of up to 300 characters, one that applies everywhere and one each for recommending a product, answering a question about the shop, looking up an order, and small talk. It changes wording only. What the chat says about stock, prices and orders comes from your store, and an instruction such as "never say something is out of stock" is ignored on purpose.
+- **AI disclosure in the opener**: the default greeting tells the shopper it is your store's AI assistant, in every language the chat speaks, which is the disclosure the EU AI Act asks for. A custom greeting that drops the disclosure is refused when you save it, and the Emporiqa terms (section 8.6) treat removing it, including through custom CSS or custom code, as a breach.
+- **The AI cost sits inside the price**: you never open an account with an AI provider or paste a key, and no second bill arrives from one
+- **You pay when it talks to a shopper**: $0 a month plus $0.25 per conversation, with a monthly ceiling the merchant sets. In a month with no conversations you pay nothing
 - **Verifiable vendor**: Rosel Group LTD, EU company number 206801487 in the Bulgarian Commercial Register. Subprocessors listed publicly at https://emporiqa.com/subprocessors/
 - **Product sync**: Real-time sync of catalog products and variants. Parent/child relationships, variant options, prices (including advanced rule prices / tier pricing), stock levels, images, and the `is_virtual` flag for downloadable products are all included.
 - **Page sync**: Landing pages and category shop pages synced with per-language CMS content so the assistant can answer support questions from your own content.
@@ -68,9 +73,9 @@ After installing by either method above:
 1. Open the Emporiqa extension and click **Connect to Emporiqa**. A new tab opens on emporiqa.com. Create a free account (no card required, $25 of signup credit) or sign in if you already have one, then pick the store you want to connect (or create a new one). The plugin is connected when you return.
 2. On the **Sync** tab, click **Sync All**. Products and pages flow through; the widget appears on your storefront when the first product arrives.
 
-**On HTTP, or prefer to paste credentials yourself?** In the Connection settings, paste a **Store ID** and **Webhook Secret** from your Emporiqa dashboard under **Settings → Store Integration**. Both flows reach the same place.
+**On HTTP, or prefer to paste credentials yourself?** In the Connection settings, paste a **Store ID** and **Webhook Secret** from your Emporiqa dashboard under **Settings → Integration**. Both flows reach the same place.
 
-For order tracking, copy the **Order Tracking URL** shown on the settings page and paste it into your Emporiqa dashboard under **Store Integration → Order Tracking** (the URL is also auto-derived by one-click connect on most setups).
+For order tracking, copy the **Order Tracking URL** shown on the settings page and paste it into your Emporiqa dashboard under **Integration → Order tracking** (the URL is also auto-derived by one-click connect on most setups).
 
 ## Configuration
 
@@ -206,7 +211,7 @@ Every service is defined against an interface (`ProductFormatterInterface`, `Cms
 
 ## Pricing
 
-The plugin is free. Emporiqa is Pay-as-you-go: $0/month base + $0.25/conversation. New accounts get $25 of signup credit (about 100 conversations on us), no card required at signup. After the credit, the monthly cap defaults to $59 and is customer-adjustable from the billing dashboard. Enterprise option for catalogs over 30,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
+The plugin is free. Emporiqa is Pay-as-you-go: $0/month base + $0.25/conversation. New accounts get $25 of signup credit (about 100 conversations on us), no card required at signup. After the credit, the monthly cap defaults to $59 and is customer-adjustable from the billing dashboard. Enterprise option for catalogs over 100,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
 
 Emporiqa also works with PrestaShop, Drupal Commerce, WooCommerce, Magento, Sylius, and any store via webhook API. One Emporiqa account and dashboard runs across all of them.
 
@@ -223,4 +228,4 @@ Emporiqa also works with PrestaShop, Drupal Commerce, WooCommerce, Magento, Syli
 
 ## Who makes Emporiqa
 
-Emporiqa is built by [Rosel Group LTD](https://emporiqa.com/about/), an EU company based in Sofia, Bulgaria, founded by [Rosen Hristov](https://www.linkedin.com/in/rosen-hristov/), who has built e-commerce software for 15 years. It is GDPR-compliant and never uses shopper data to train AI models. Pricing is pay-as-you-go: $0.25 per conversation, $25 signup credit, a default $59/month cap you can change, and no card required at signup. Emporiqa runs on self-hosted platforms (WooCommerce, Magento and Adobe Commerce, PrestaShop, Drupal Commerce, Shopware 6, Sylius); it does not run on Shopify. Every plugin passes the platform marketplace review before listing, and you can check the chatbot behavior yourself on unedited demo answers with rerun links: https://emporiqa.com/proof/
+Emporiqa is built by [Rosel Group LTD](https://emporiqa.com/about/), an EU company based in Sofia, Bulgaria, founded by [Rosen Hristov](https://www.linkedin.com/in/rosen-hristov/), who has built e-commerce software for 15 years. It is GDPR-compliant and never uses shopper data to train AI models. Pricing is pay-as-you-go: $0.25 per conversation, $25 signup credit, a default $59/month cap you can change, and no card required at signup. Emporiqa runs on self-hosted platforms (WooCommerce, Magento and Adobe Commerce, PrestaShop, Drupal Commerce, Shopware 6, Sylius); it does not run on Shopify. This plugin installs from a [GitHub release](https://github.com/emporiqa/shopware/releases) zip or with Composer; the Shopware Store listing is still in review. You can check the chatbot behavior yourself on unedited demo answers with rerun links: https://emporiqa.com/proof/

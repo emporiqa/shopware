@@ -44,15 +44,15 @@
             "connection": {
                 "title": "Connection",
                 "storeId": "Store ID",
-                "storeIdHelp": "Find it in your Emporiqa dashboard at Settings → Store Integration → Integration Overview.",
+                "storeIdHelp": "Find it in your Emporiqa dashboard at Settings → Integration → Integration overview.",
                 "webhookSecret": "Webhook Secret",
-                "webhookSecretHelp": "Find it in your Emporiqa dashboard at Settings → Store Integration → Integration Overview.",
+                "webhookSecretHelp": "Find it in your Emporiqa dashboard at Settings → Integration → Integration overview.",
                 "testButton": "Test Connection",
                 "errorGeneric": "Connection test failed. Check your Store ID and Webhook Secret.",
                 "saveFirst": "Save your settings before testing the connection.",
                 "noProductFound": "No active products found to test with. Using test payload.",
                 "copyUrl": "Copy URL",
-                "orderTrackingUrlHelp": "Copy this URL into your Emporiqa dashboard under Settings, Store Integration, Order Tracking.",
+                "orderTrackingUrlHelp": "Copy this URL into your Emporiqa dashboard under Settings, Integration, Order tracking.",
                 "testSuccess": "Connection successful."
             },
             "syncSettings": {

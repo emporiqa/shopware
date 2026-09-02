@@ -44,15 +44,15 @@
             "connection": {
                 "title": "Verbindung",
                 "storeId": "Shop-ID",
-                "storeIdHelp": "Finden Sie diese in Ihrem Emporiqa-Dashboard unter Einstellungen → Shop-Integration → Integrationsübersicht.",
+                "storeIdHelp": "Sie finden die Shop-ID in Ihrem Emporiqa-Dashboard unter „Settings“ → „Integration“ → „Integration overview“. Das Dashboard ist englischsprachig.",
                 "webhookSecret": "Webhook-Geheimnis",
-                "webhookSecretHelp": "Finden Sie es in Ihrem Emporiqa-Dashboard unter Einstellungen → Shop-Integration → Integrationsübersicht.",
+                "webhookSecretHelp": "Sie finden das Webhook-Geheimnis in Ihrem Emporiqa-Dashboard unter „Settings“ → „Integration“ → „Integration overview“. Das Dashboard ist englischsprachig.",
                 "testButton": "Verbindung testen",
                 "errorGeneric": "Verbindungstest fehlgeschlagen. Prüfen Sie Ihre Shop-ID und Ihr Webhook-Geheimnis.",
                 "saveFirst": "Speichern Sie Ihre Einstellungen, bevor Sie die Verbindung testen.",
                 "noProductFound": "Keine aktiven Produkte zum Testen gefunden. Verwende Test-Payload.",
                 "copyUrl": "URL kopieren",
-                "orderTrackingUrlHelp": "Kopieren Sie diese URL in Ihr Emporiqa-Dashboard unter Einstellungen, Shop-Integration, Bestellverfolgung.",
+                "orderTrackingUrlHelp": "Kopieren Sie diese URL in Ihr Emporiqa-Dashboard unter „Settings“ → „Integration“ → „Order tracking“. Das Dashboard ist englischsprachig.",
                 "testSuccess": "Verbindung erfolgreich."
             },
             "syncSettings": {

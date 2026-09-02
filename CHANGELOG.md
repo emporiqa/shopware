@@ -1,7 +1,17 @@
 # Changelog
 
+## 1.1.1 (2026-09-02)
+
+### Fixed
+- **The German configuration help text named screens that do not exist.** Both
+  `helpText lang="de-DE"` strings pointed merchants at "Einstellungen →
+  Shop-Integration → Integrationsübersicht", but the Emporiqa dashboard is not
+  localized, so no German screen of that name exists. Both now give the real
+  English path and say that the dashboard is in English. The Shopware plugin
+  admin itself stays German, which it always was.
+
 ## 1.1.0 (2026-07-10)
-Initial marketplace release.
+First public release. Distributed as a GitHub release zip and via Composer.
 
 ### Features
 

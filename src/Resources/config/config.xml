@@ -9,16 +9,16 @@
             <name>storeId</name>
             <label>Store ID</label>
             <label lang="de-DE">Shop-ID</label>
-            <helpText>Find it in your Emporiqa dashboard at Settings → Store Integration → Integration Overview.</helpText>
-            <helpText lang="de-DE">Finden Sie diese in Ihrem Emporiqa-Dashboard unter Einstellungen → Shop-Integration → Integrationsübersicht.</helpText>
+            <helpText>Find it in your Emporiqa dashboard at Settings → Integration → Integration overview.</helpText>
+            <helpText lang="de-DE">Sie finden die Shop-ID in Ihrem Emporiqa-Dashboard unter „Settings“ → „Integration“ → „Integration overview“. Das Dashboard ist englischsprachig.</helpText>
         </input-field>
 
         <input-field type="password">
             <name>webhookSecret</name>
             <label>Webhook Secret</label>
             <label lang="de-DE">Webhook-Geheimnis</label>
-            <helpText>Find it in your Emporiqa dashboard at Settings → Store Integration → Integration Overview.</helpText>
-            <helpText lang="de-DE">Finden Sie es in Ihrem Emporiqa-Dashboard unter Einstellungen → Shop-Integration → Integrationsübersicht.</helpText>
+            <helpText>Find it in your Emporiqa dashboard at Settings → Integration → Integration overview.</helpText>
+            <helpText lang="de-DE">Sie finden das Webhook-Geheimnis in Ihrem Emporiqa-Dashboard unter „Settings“ → „Integration“ → „Integration overview“. Das Dashboard ist englischsprachig.</helpText>
         </input-field>
     </card>
 
