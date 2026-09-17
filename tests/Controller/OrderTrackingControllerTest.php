@@ -9,6 +9,7 @@ use Emporiqa\ShopwarePlugin\Event\OrderTrackingResponseEvent;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\WebhookClient;
 use PHPUnit\Framework\MockObject\MockObject;
+use Emporiqa\ShopwarePlugin\Tests\Support\EntityCollectionHelper;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Checkout\Order\Aggregate\OrderCustomer\OrderCustomerEntity;
 use Shopware\Core\Checkout\Order\Aggregate\OrderDelivery\OrderDeliveryCollection;
@@ -26,6 +27,8 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 class OrderTrackingControllerTest extends TestCase
 {
+    use EntityCollectionHelper;
+
     private ConfigServiceInterface&MockObject $config;
     private EntityRepository&MockObject $orderRepository;
     private EventDispatcherInterface&MockObject $eventDispatcher;
@@ -214,6 +217,7 @@ class OrderTrackingControllerTest extends TestCase
         $order = $this->createMock(OrderEntity::class);
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($order);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($order));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $response = $this->controller->tracking($request, $context);
@@ -238,6 +242,7 @@ class OrderTrackingControllerTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn(null);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection(null));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $response = $this->controller->tracking($request, $context);
@@ -277,6 +282,7 @@ class OrderTrackingControllerTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($order);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($order));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $response = $this->controller->tracking($request, $context);
@@ -314,6 +320,7 @@ class OrderTrackingControllerTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($order);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($order));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $response = $this->controller->tracking($request, $context);
@@ -348,6 +355,7 @@ class OrderTrackingControllerTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($order);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($order));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $response = $this->controller->tracking($request, $context);
@@ -387,6 +395,7 @@ class OrderTrackingControllerTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($order);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($order));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $response = $this->controller->tracking($request, $context);
@@ -429,6 +438,7 @@ class OrderTrackingControllerTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($order);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($order));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $response = $this->controller->tracking($request, $context);
@@ -461,6 +471,7 @@ class OrderTrackingControllerTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($order);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($order));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $response = $this->controller->tracking($request, $context);
@@ -504,6 +515,7 @@ class OrderTrackingControllerTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($order);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($order));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $response = $this->controller->tracking($request, $context);
@@ -547,6 +559,7 @@ class OrderTrackingControllerTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($order);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($order));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $response = $this->controller->tracking($request, $context);
@@ -586,6 +599,7 @@ class OrderTrackingControllerTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($order);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($order));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $response = $this->controller->tracking($request, $context);
@@ -632,6 +646,7 @@ class OrderTrackingControllerTest extends TestCase
                 $callCount++;
                 $result = $this->createMock(EntitySearchResult::class);
                 $result->method('first')->willReturn($callCount === 1 ? $initialOrder : $localizedOrder);
+                $result->method('getEntities')->willReturn(self::entityCollection($callCount === 1 ? $initialOrder : $localizedOrder));
 
                 return $result;
             },
@@ -667,6 +682,7 @@ class OrderTrackingControllerTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($order);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($order));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $this->eventDispatcher

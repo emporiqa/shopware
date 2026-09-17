@@ -1,0 +1,127 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/symfony/dependency-injection/7.4/Loader/schema/services.schema.json
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        public: false
+
+    Emporiqa\ShopwarePlugin\Service\ConfigService: ~
+
+    Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface: '@Emporiqa\ShopwarePlugin\Service\ConfigService'
+
+    Emporiqa\ShopwarePlugin\Service\WebhookClient: ~
+
+    Emporiqa\ShopwarePlugin\Service\WebhookClientInterface: '@Emporiqa\ShopwarePlugin\Service\WebhookClient'
+
+    Emporiqa\ShopwarePlugin\Service\ConnectService: ~
+
+    Emporiqa\ShopwarePlugin\Service\ConnectServiceInterface: '@Emporiqa\ShopwarePlugin\Service\ConnectService'
+
+    Emporiqa\ShopwarePlugin\Service\ProductFormatter: ~
+
+    Emporiqa\ShopwarePlugin\Service\ProductFormatterInterface: '@Emporiqa\ShopwarePlugin\Service\ProductFormatter'
+
+    Emporiqa\ShopwarePlugin\Service\CmsContentResolver:
+        arguments:
+            $cmsPageLoader: '@Shopware\Core\Content\Cms\SalesChannel\SalesChannelCmsPageLoader'
+            $salesChannelContextFactory: '@Shopware\Core\System\SalesChannel\Context\SalesChannelContextFactory'
+            $categoryRepository: '@sales_channel.category.repository'
+            $landingPageRepository: '@sales_channel.landing_page.repository'
+
+    Emporiqa\ShopwarePlugin\Service\PageSyncRegistry: ~
+
+    Emporiqa\ShopwarePlugin\Service\CmsContentResolverInterface: '@Emporiqa\ShopwarePlugin\Service\CmsContentResolver'
+
+    Emporiqa\ShopwarePlugin\Service\CmsPageFormatter: ~
+
+    Emporiqa\ShopwarePlugin\Service\CmsPageFormatterInterface: '@Emporiqa\ShopwarePlugin\Service\CmsPageFormatter'
+
+    Emporiqa\ShopwarePlugin\Service\ChannelResolver:
+        arguments:
+            $salesChannelRepository: '@sales_channel.repository'
+
+    Emporiqa\ShopwarePlugin\Service\ChannelResolverInterface: '@Emporiqa\ShopwarePlugin\Service\ChannelResolver'
+
+    Emporiqa\ShopwarePlugin\Service\SyncService:
+        arguments:
+            $productRepository: '@product.repository'
+            $landingPageRepository: '@landing_page.repository'
+            $categoryRepository: '@category.repository'
+            $salesChannelRepository: '@sales_channel.repository'
+
+    Emporiqa\ShopwarePlugin\Service\SyncServiceInterface: '@Emporiqa\ShopwarePlugin\Service\SyncService'
+
+    Emporiqa\ShopwarePlugin\MessageQueue\Handler\WebhookMessageHandler: ~
+
+    Emporiqa\ShopwarePlugin\MessageQueue\Handler\FullSyncMessageHandler: ~
+
+    Emporiqa\ShopwarePlugin\MessageQueue\Handler\PageResyncMessageHandler:
+        arguments:
+            $landingPageRepository: '@landing_page.repository'
+            $categoryRepository: '@category.repository'
+            $eventDispatcher: '@event_dispatcher'
+
+    Emporiqa\ShopwarePlugin\Subscriber\ProductSubscriber:
+        arguments:
+            $productRepository: '@product.repository'
+            $connection: '@Doctrine\DBAL\Connection'
+
+    Emporiqa\ShopwarePlugin\Subscriber\OrderSubscriber:
+        arguments:
+            $orderRepository: '@order.repository'
+            $orderTransactionRepository: '@order_transaction.repository'
+
+    Emporiqa\ShopwarePlugin\Subscriber\LandingPageSubscriber: ~
+
+    Emporiqa\ShopwarePlugin\Subscriber\CategorySubscriber: ~
+
+    Emporiqa\ShopwarePlugin\Subscriber\CmsLayoutSubscriber:
+        arguments:
+            $connection: '@Doctrine\DBAL\Connection'
+
+    Emporiqa\ShopwarePlugin\Subscriber\SeoUrlSubscriber:
+        arguments:
+            $connection: '@Doctrine\DBAL\Connection'
+
+    Emporiqa\ShopwarePlugin\Subscriber\CatalogChangeSubscriber: ~
+
+    Emporiqa\ShopwarePlugin\Subscriber\StorefrontSubscriber:
+        arguments:
+            $languageRepository: '@language.repository'
+
+    Emporiqa\ShopwarePlugin\Controller\CartController:
+        public: true
+        arguments:
+            $productRepository: '@product.repository'
+
+    Emporiqa\ShopwarePlugin\Controller\OrderTrackingController:
+        public: true
+        arguments:
+            $orderRepository: '@order.repository'
+            $eventDispatcher: '@event_dispatcher'
+
+    Emporiqa\ShopwarePlugin\Controller\UserTokenController:
+        public: true
+
+    Emporiqa\ShopwarePlugin\Controller\Admin\ConnectController:
+        public: true
+
+    Emporiqa\ShopwarePlugin\Controller\Admin\SyncController:
+        public: true
+        arguments:
+            $productRepository: '@product.repository'
+            $landingPageRepository: '@landing_page.repository'
+            $categoryRepository: '@category.repository'
+            $salesChannelRepository: '@sales_channel.repository'
+            $propertyGroupRepository: '@property_group.repository'
+            $stateMachineStateRepository: '@state_machine_state.repository'
+
+    Emporiqa\ShopwarePlugin\Command\SyncProductsCommand: ~
+
+    Emporiqa\ShopwarePlugin\Command\SyncPagesCommand: ~
+
+    Emporiqa\ShopwarePlugin\Command\SyncAllCommand: ~
+
+    Emporiqa\ShopwarePlugin\Command\TestConnectionCommand:
+        arguments:
+            $productRepository: '@product.repository'

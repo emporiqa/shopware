@@ -6,10 +6,12 @@ namespace Emporiqa\ShopwarePlugin\Service;
 
 use Shopware\Core\Content\Product\Aggregate\ProductMedia\ProductMediaEntity;
 use Shopware\Core\Content\Product\ProductEntity;
-use Shopware\Core\Content\Product\State;
 
 class ProductFormatter implements ProductFormatterInterface
 {
+    /** Product state flag for digital/download products (Shopware\Core\Content\Product\State::IS_DOWNLOAD, deprecated class). */
+    private const PRODUCT_STATE_DOWNLOAD = 'is-download';
+
     use TranslationResolverTrait;
 
     public function __construct(
@@ -27,7 +29,7 @@ class ProductFormatter implements ProductFormatterInterface
         ?string $syncSessionId = null,
     ): array {
         $productId = $product->getId();
-        $parentSku = $product->getProductNumber() ?? ('product-' . $productId);
+        $parentSku = $product->getProductNumber();
         $defaultCategory = '';
         $defaultBrand = '';
 
@@ -63,7 +65,7 @@ class ProductFormatter implements ProductFormatterInterface
         if ($hasVariations) {
             [$availability, $stock] = $this->aggregateChildAvailability($children, $parentIsCloseout);
         } else {
-            $stock = $product->getAvailableStock() ?? $product->getStock() ?? 0;
+            $stock = $product->getAvailableStock() ?? $product->getStock();
             $availability = $this->resolveAvailability($stock, $parentIsCloseout);
         }
 
@@ -139,7 +141,7 @@ class ProductFormatter implements ProductFormatterInterface
 
         $parentData = [
             'identification_number' => 'product-' . $productId,
-            'sku' => $product->getProductNumber() ?? $parentSku,
+            'sku' => $product->getProductNumber(),
             'channels' => $channelKeys,
             'names' => $names,
             'descriptions' => $descriptions,
@@ -227,12 +229,12 @@ class ProductFormatter implements ProductFormatterInterface
         // variant's own raw value (null → false) rather than a parent value.
         if ($product->getParentId() !== null) {
             $productId = $product->getId();
-            $stock = $product->getAvailableStock() ?? $product->getStock() ?? 0;
+            $stock = $product->getAvailableStock() ?? $product->getStock();
 
             return [
                 $this->buildAvailabilityEntry(
                     'variation-' . $productId,
-                    $product->getProductNumber() ?? ('variation-' . $productId),
+                    $product->getProductNumber(),
                     $channelKeys,
                     $this->resolveAvailability($stock, $this->resolveIsCloseout($product, false)),
                     $stock,
@@ -246,12 +248,12 @@ class ProductFormatter implements ProductFormatterInterface
 
         if (!$hasVariations) {
             $productId = $product->getId();
-            $stock = $product->getAvailableStock() ?? $product->getStock() ?? 0;
+            $stock = $product->getAvailableStock() ?? $product->getStock();
 
             return [
                 $this->buildAvailabilityEntry(
                     'product-' . $productId,
-                    $product->getProductNumber() ?? ('product-' . $productId),
+                    $product->getProductNumber(),
                     $channelKeys,
                     $this->resolveAvailability($stock, $parentIsCloseout),
                     $stock,
@@ -267,11 +269,11 @@ class ProductFormatter implements ProductFormatterInterface
             }
 
             $childId = $child->getId();
-            $stock = $child->getAvailableStock() ?? $child->getStock() ?? 0;
+            $stock = $child->getAvailableStock() ?? $child->getStock();
 
             $events[] = $this->buildAvailabilityEntry(
                 'variation-' . $childId,
-                $child->getProductNumber() ?? ('variation-' . $childId),
+                $child->getProductNumber(),
                 $channelKeys,
                 $this->resolveAvailability($stock, $this->resolveIsCloseout($child, $parentIsCloseout)),
                 $stock,
@@ -322,7 +324,7 @@ class ProductFormatter implements ProductFormatterInterface
 
         $minPurchase = $variant->getMinPurchase() ?? $parentMinPurchase;
         $maxPurchase = $variant->getMaxPurchase() ?? $parentMaxPurchase;
-        $stock = $variant->getAvailableStock() ?? $variant->getStock() ?? 0;
+        $stock = $variant->getAvailableStock() ?? $variant->getStock();
         $availability = $this->resolveAvailability($stock, $this->resolveIsCloseout($variant, $parentIsCloseout));
 
         foreach ($channelContexts as $channelKey => $contexts) {
@@ -380,7 +382,7 @@ class ProductFormatter implements ProductFormatterInterface
 
         $data = [
             'identification_number' => 'variation-' . $variantId,
-            'sku' => $variant->getProductNumber() ?? 'variation-' . $variantId,
+            'sku' => $variant->getProductNumber(),
             'channels' => $channelKeys,
             'names' => $names,
             'descriptions' => $descriptions,
@@ -474,10 +476,8 @@ class ProductFormatter implements ProductFormatterInterface
                 $translations = $category->getTranslations();
                 if ($translations !== null) {
                     foreach ($translations as $translation) {
-                        if (method_exists($translation, 'getLanguageId') && $translation->getLanguageId() === $languageId) {
-                            if (method_exists($translation, 'getBreadcrumb')) {
-                                $breadcrumb = $translation->getBreadcrumb();
-                            }
+                        if ($translation->getLanguageId() === $languageId) {
+                            $breadcrumb = $translation->getBreadcrumb();
                             break;
                         }
                     }
@@ -486,24 +486,17 @@ class ProductFormatter implements ProductFormatterInterface
 
             // Fallback to default breadcrumb
             if ($breadcrumb === null) {
-                if (method_exists($category, 'getTranslation')) {
-                    $breadcrumb = $category->getTranslation('breadcrumb');
-                }
-                if (!\is_array($breadcrumb)) {
-                    $breadcrumb = method_exists($category, 'getBreadcrumb') ? $category->getBreadcrumb() : null;
-                }
+                $translatedBreadcrumb = $category->getTranslation('breadcrumb');
+                $breadcrumb = \is_array($translatedBreadcrumb) ? $translatedBreadcrumb : $category->getBreadcrumb();
             }
 
-            if (\is_array($breadcrumb) && !empty($breadcrumb)) {
+            if ($breadcrumb !== []) {
                 $parts = array_values($breadcrumb);
                 // Skip root navigation category (first entry)
                 if (\count($parts) > 1) {
                     array_shift($parts);
                 }
-                $path = implode(' > ', $parts);
-                if ($path !== '') {
-                    $paths[] = $path;
-                }
+                $paths[] = implode(' > ', $parts);
             } else {
                 // Fallback: use category name directly
                 $catName = $this->getTranslatedString($category, 'name', $languageId);
@@ -721,7 +714,7 @@ class ProductFormatter implements ProductFormatterInterface
                 continue;
             }
 
-            $childStock = $child->getAvailableStock() ?? $child->getStock() ?? 0;
+            $childStock = $child->getAvailableStock() ?? $child->getStock();
             $totalStock += $childStock;
 
             $status = $this->resolveAvailability($childStock, $this->resolveIsCloseout($child, $parentIsCloseout));
@@ -748,9 +741,7 @@ class ProductFormatter implements ProductFormatterInterface
             return false;
         }
 
-        $downloadState = \class_exists(State::class) ? State::IS_DOWNLOAD : 'is-download';
-
-        return \in_array($downloadState, $states, true);
+        return \in_array(self::PRODUCT_STATE_DOWNLOAD, $states, true);
     }
 
     /**
@@ -856,15 +847,19 @@ class ProductFormatter implements ProductFormatterInterface
 
         $filtered = [];
         foreach ($channelContexts as $channelKey => $contexts) {
-            $channelVisible = false;
+            // Contexts of sales channels the product is visible in come first, so
+            // the per-language link points to a channel that actually serves it.
+            $visible = [];
+            $hidden = [];
             foreach ($contexts as $ctx) {
                 if (isset($visibleSalesChannelIds[$ctx['salesChannelId'] ?? ''])) {
-                    $channelVisible = true;
-                    break;
+                    $visible[] = $ctx;
+                } else {
+                    $hidden[] = $ctx;
                 }
             }
-            if ($channelVisible) {
-                $filtered[$channelKey] = $contexts;
+            if ($visible !== []) {
+                $filtered[$channelKey] = array_merge($visible, $hidden);
             }
         }
 

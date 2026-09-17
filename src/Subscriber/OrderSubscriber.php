@@ -139,7 +139,7 @@ class OrderSubscriber implements EventSubscriberInterface, ResetInterface
         $criteria->addAssociation('lineItems');
         $criteria->addAssociation('currency');
 
-        $order = $this->orderRepository->search($criteria, $context)->first();
+        $order = $this->orderRepository->search($criteria, $context)->getEntities()->first();
 
         return $order instanceof OrderEntity ? $order : null;
     }
@@ -220,7 +220,7 @@ class OrderSubscriber implements EventSubscriberInterface, ResetInterface
 
             $productId = $referencedId;
             $variationId = null;
-            if (isset($payload['parentId']) && $payload['parentId'] !== null) {
+            if (isset($payload['parentId'])) {
                 $productId = $payload['parentId'];
                 $variationId = 'variation-' . $referencedId;
             }
@@ -241,7 +241,7 @@ class OrderSubscriber implements EventSubscriberInterface, ResetInterface
         $transactionId = $event->getTransition()->getEntityId();
 
         $criteria = new Criteria([$transactionId]);
-        $transaction = $this->orderTransactionRepository->search($criteria, $event->getContext())->first();
+        $transaction = $this->orderTransactionRepository->search($criteria, $event->getContext())->getEntities()->first();
 
         if (!$transaction instanceof OrderTransactionEntity) {
             return null;

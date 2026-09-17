@@ -1,0 +1,14 @@
+{% block emporiqa_config_link %}
+<div class="emporiqa-config-link">
+    <p class="emporiqa-config-link__text">
+        {{ $t('emporiqa-integration.configLink.description') }}
+    </p>
+    <sw-button
+        variant="primary"
+        size="small"
+        @click="openSettings"
+    >
+        {{ $t('emporiqa-integration.configLink.button') }}
+    </sw-button>
+</div>
+{% endblock %}

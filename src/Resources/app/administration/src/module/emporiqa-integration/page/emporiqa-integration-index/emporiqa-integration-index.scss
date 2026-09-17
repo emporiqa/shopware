@@ -97,6 +97,17 @@
         color: var(--color-text-secondary, #52667a);
     }
 
+    &__languages {
+        margin-top: 22px;
+        margin-bottom: 22px;
+    }
+
+    &__languages-label {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+
     &__help-text {
         margin-top: 4px;
         font-size: 13px;

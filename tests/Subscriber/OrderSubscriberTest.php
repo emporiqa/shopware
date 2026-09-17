@@ -8,6 +8,7 @@ use Emporiqa\ShopwarePlugin\MessageQueue\Message\WebhookMessage;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
 use Emporiqa\ShopwarePlugin\Subscriber\OrderSubscriber;
 use PHPUnit\Framework\MockObject\MockObject;
+use Emporiqa\ShopwarePlugin\Tests\Support\EntityCollectionHelper;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Checkout\Cart\Event\CheckoutOrderPlacedEvent;
 use Shopware\Core\Checkout\Order\OrderEntity;
@@ -27,6 +28,8 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 class OrderSubscriberTest extends TestCase
 {
+    use EntityCollectionHelper;
+
     private ConfigServiceInterface&MockObject $config;
     private MessageBusInterface&MockObject $messageBus;
     private EntityRepository&MockObject $orderRepository;
@@ -95,6 +98,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($fullOrder);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($fullOrder));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $this->requestStack->method('getCurrentRequest')->willReturn(null);
@@ -127,6 +131,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn(null);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection(null));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $event = $this->createOrderPlacedEvent('order-missing', '20003');
@@ -149,6 +154,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($fullOrder);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($fullOrder));
         $this->orderRepository->method('search')->willReturn($searchResult);
         $this->requestStack->method('getCurrentRequest')->willReturn(null);
 
@@ -179,6 +185,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($fullOrder);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($fullOrder));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $event = $this->createOrderPlacedEvent('order-session-placed', '20005');
@@ -209,6 +216,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($fullOrder);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($fullOrder));
         $this->orderRepository->method('search')->willReturn($searchResult);
         $this->requestStack->method('getCurrentRequest')->willReturn(null);
 
@@ -266,6 +274,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($fullOrder);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($fullOrder));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $this->requestStack->method('getCurrentRequest')->willReturn(null);
@@ -306,6 +315,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($fullOrder);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($fullOrder));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $this->requestStack->method('getCurrentRequest')->willReturn(null);
@@ -328,6 +338,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn(null);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection(null));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $event = $this->createStateChangeEvent('order-missing', 'completed');
@@ -354,6 +365,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($fullOrder);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($fullOrder));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $event = $this->createStateChangeEvent('order-cookie-001', 'completed');
@@ -389,6 +401,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($fullOrder);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($fullOrder));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $event = $this->createOrderPlacedEvent('order-sid-dot', '50001');
@@ -421,6 +434,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($fullOrder);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($fullOrder));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $event = $this->createOrderPlacedEvent('order-sid-long', '50002');
@@ -453,6 +467,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($fullOrder);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($fullOrder));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $event = $this->createOrderPlacedEvent('order-sid-exact', '50003');
@@ -486,6 +501,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($fullOrder);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($fullOrder));
         $this->orderRepository->method('search')->willReturn($searchResult);
 
         $event = $this->createStateChangeEvent('order-cf-invalid', 'completed');
@@ -519,6 +535,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($fullOrder);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($fullOrder));
         $this->orderRepository->method('search')->willReturn($searchResult);
         $this->requestStack->method('getCurrentRequest')->willReturn(null);
 
@@ -544,6 +561,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($fullOrder);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($fullOrder));
         $this->orderRepository->method('search')->willReturn($searchResult);
         $this->requestStack->method('getCurrentRequest')->willReturn(null);
 
@@ -565,6 +583,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($fullOrder);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($fullOrder));
         $this->orderRepository->method('search')->willReturn($searchResult);
         $this->requestStack->method('getCurrentRequest')->willReturn(null);
 
@@ -597,6 +616,7 @@ class OrderSubscriberTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($fullOrder);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($fullOrder));
         $this->orderRepository->method('search')->willReturn($searchResult);
         $this->requestStack->method('getCurrentRequest')->willReturn(null);
 
@@ -633,8 +653,10 @@ class OrderSubscriberTest extends TestCase
                 $result = $this->createMock(EntitySearchResult::class);
                 if (\in_array('order-A', $ids, true)) {
                     $result->method('first')->willReturn($placedOrder);
+                    $result->method('getEntities')->willReturn(self::entityCollection($placedOrder));
                 } else {
                     $result->method('first')->willReturn($completedOrder);
+                    $result->method('getEntities')->willReturn(self::entityCollection($completedOrder));
                 }
 
                 return $result;

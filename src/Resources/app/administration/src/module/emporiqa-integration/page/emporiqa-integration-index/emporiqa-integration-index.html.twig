@@ -26,6 +26,7 @@
             v-if="activeTab === 'settings'"
             variant="primary"
             :isLoading="isSavingSettings"
+            :disabled="isLoadingSettings || loadError"
             @click="saveSettings"
         >
             {{ $t('emporiqa-integration.settings.saveButton') }}
@@ -62,7 +63,11 @@
 
         {# Info banner (visible on both tabs) #}
         {% block emporiqa_integration_info_banner %}
-        <sw-alert variant="info" class="emporiqa-integration-index__info-banner">
+        <sw-alert
+            v-if="!isConnected"
+            variant="info"
+            class="emporiqa-integration-index__info-banner"
+        >
             <span v-html="$t('emporiqa-integration.infoBanner.quickSetup')"></span>
         </sw-alert>
         {% endblock %}
@@ -70,7 +75,7 @@
         {# Save feedback alerts #}
         <sw-alert
             v-if="settingsSaved"
-            variant="success"
+            :variant="alertVariants.success"
             class="emporiqa-integration-index__save-alert"
         >
             {{ $t('emporiqa-integration.settings.saved') }}
@@ -78,7 +83,7 @@
 
         <sw-alert
             v-if="saveError"
-            variant="error"
+            :variant="alertVariants.error"
             class="emporiqa-integration-index__save-alert"
         >
             {{ $t('emporiqa-integration.settings.saveError') }}
@@ -86,7 +91,7 @@
 
         <sw-alert
             v-if="loadError"
-            variant="warning"
+            :variant="alertVariants.warning"
             class="emporiqa-integration-index__save-alert"
         >
             {{ $t('emporiqa-integration.settings.loadError') }}
@@ -216,6 +221,28 @@
                         {{ $t('emporiqa-integration.settings.syncSettings.brandSourceHelp') }}
                     </p>
 
+                    <div class="emporiqa-integration-index__languages">
+                        <p class="emporiqa-integration-index__languages-label">
+                            {{ $t('emporiqa-integration.settings.advanced.enabledLanguages') }}
+                        </p>
+                        <sw-checkbox-field
+                            v-for="language in availableLanguages"
+                            :key="language.code"
+                            :value="isLanguageEnabled(language.code)"
+                            @update:value="toggleLanguage(language.code, $event)"
+                            :label="`${language.name} (${language.code})`"
+                        />
+                        <p
+                            v-if="availableLanguages.length === 0"
+                            class="emporiqa-integration-index__help-text"
+                        >
+                            {{ $t('emporiqa-integration.settings.advanced.enabledLanguagesEmpty') }}
+                        </p>
+                        <p class="emporiqa-integration-index__help-text">
+                            {{ $t('emporiqa-integration.settings.advanced.enabledLanguagesHelp') }}
+                        </p>
+                    </div>
+
                     <sw-text-field
                         :value="settings.webhookUrl"
                         @input="setSetting('webhookUrl', $event)"
@@ -284,7 +311,7 @@
 
                     <sw-alert
                         v-if="connectionResult"
-                        :variant="connectionResult.success ? 'success' : 'error'"
+                        :variant="connectionResult.success ? alertVariants.success : alertVariants.error"
                         class="emporiqa-integration-index__result-alert"
                     >
                         {{ connectionResult.success ? $t('emporiqa-integration.settings.connection.testSuccess') : connectionResult.message }}
@@ -438,7 +465,6 @@
             <sw-card :title="$t('emporiqa-integration.cli.title')">
                 <template #default>
                     <sw-button
-                        variant="ghost"
                         size="small"
                         @click="showCliCommands = !showCliCommands"
                     >

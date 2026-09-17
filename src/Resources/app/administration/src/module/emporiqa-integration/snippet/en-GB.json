@@ -70,7 +70,11 @@
                 "webhookUrl": "Webhook URL",
                 "webhookUrlHelp": "Only change this if you run a custom Emporiqa instance.",
                 "batchSize": "Batch Size",
-                "batchSizeHelp": "Items per webhook batch. Maximum: 200."
+                "batchSizeHelp": "Items per webhook batch. Maximum: 200.",
+                "enabledLanguages": "Enabled Languages",
+                "enabledLanguagesHelp": "Select which languages to include in synced data. All selected languages are sent in each event. The chat widget is hidden on storefronts whose language is not selected.",
+                "enabledLanguagesRequired": "Select at least one language.",
+                "enabledLanguagesEmpty": "No storefront languages found. Add a domain to a storefront sales channel first."
             }
         },
         "sync": {
@@ -118,6 +122,10 @@
             "show": "Show commands",
             "hide": "Hide commands",
             "description": "These commands are available in the Shopware CLI. Each sync command also supports a --dry-run flag."
+        },
+        "configLink": {
+            "description": "Connect your shop, choose the synced languages and send your catalogue to Emporiqa from the Emporiqa page.",
+            "button": "Open Emporiqa settings"
         }
     }
 }

@@ -43,7 +43,7 @@ class FullSyncMessageHandler
             'entity' => $entity,
             'products' => $result['products'] ?? null,
             'pages' => $result['pages'] ?? null,
-            'events' => $result['events'] ?? null,
+            'events' => $result['events'],
         ]);
     }
 }

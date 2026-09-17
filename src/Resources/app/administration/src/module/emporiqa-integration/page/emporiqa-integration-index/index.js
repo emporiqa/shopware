@@ -61,6 +61,9 @@ Component.register('emporiqa-integration-index', {
                 batchSize: 50,
             },
 
+            // Locale codes to sync; null means all languages (nothing saved yet)
+            enabledLanguages: null,
+
             // Connection test
             isTestingConnection: false,
             connectionResult: null,
@@ -90,6 +93,13 @@ Component.register('emporiqa-integration-index', {
     },
 
     computed: {
+        // 6.7 renders sw-alert through Meteor's mt-banner, whose variant names differ
+        alertVariants() {
+            return Shopware.Feature.isActive('v6.7.0.0')
+                ? { success: 'positive', warning: 'attention', error: 'critical' }
+                : { success: 'success', warning: 'warning', error: 'error' };
+        },
+
         emporiqaLogoUrl() {
             const base = (Shopware.Context.api.assetsPath || '').replace(/\/+$/, '');
             return `${base}/emporiqaintegration/static/emporiqa-logo.png`;
@@ -114,6 +124,23 @@ Component.register('emporiqa-integration-index', {
 
         isConnected() {
             return !!(this.settings.storeId && this.settings.webhookSecret);
+        },
+
+        availableLanguages() {
+            const languages = new Map();
+
+            this.salesChannels.forEach((channel) => {
+                (channel.domains || []).forEach((domain) => {
+                    if (domain.languageCode && !languages.has(domain.languageCode)) {
+                        languages.set(domain.languageCode, {
+                            code: domain.languageCode,
+                            name: domain.language || domain.languageCode,
+                        });
+                    }
+                });
+            });
+
+            return [...languages.values()];
         },
 
         brandAttributeOptions() {
@@ -180,6 +207,7 @@ Component.register('emporiqa-integration-index', {
                             this.settings[key] = vals[prefixedKey];
                         }
                     });
+                    this.enabledLanguages = this.parseEnabledLanguages(vals[`${CONFIG_PREFIX}enabledLanguages`]);
                 })
                 .catch(() => {
                     this.loadError = true;
@@ -190,11 +218,24 @@ Component.register('emporiqa-integration-index', {
         },
 
         saveSettings() {
+            // Never post the defaults over stored credentials while they are still loading
+            if (this.isLoadingSettings || this.loadError) {
+                return;
+            }
+
+            const enabledLanguages = this.enabledLanguagesPayload();
+            if (enabledLanguages === null) {
+                this.createNotificationError({
+                    message: this.$t('emporiqa-integration.settings.advanced.enabledLanguagesRequired'),
+                });
+                return;
+            }
+
             this.isSavingSettings = true;
             this.settingsSaved = false;
             this.saveError = false;
 
-            this.emporiqaService.saveSettings(this.settings)
+            this.emporiqaService.saveSettings({ ...this.settings, enabledLanguages })
                 .then(() => {
                     this.settingsSaved = true;
                     setTimeout(() => { this.settingsSaved = false; }, 3000);
@@ -327,7 +368,6 @@ Component.register('emporiqa-integration-index', {
                     return;
                 }
 
-                // eslint-disable-next-line no-await-in-loop
                 const batchResult = await this.runSyncBatch(work);
 
                 if (batchResult.success) {
@@ -369,11 +409,9 @@ Component.register('emporiqa-integration-index', {
                         }),
                         'warning',
                     );
-                    // eslint-disable-next-line no-continue
                     continue;
                 }
 
-                // eslint-disable-next-line no-await-in-loop
                 const completeResult = await this.runSyncComplete(session);
 
                 if (completeResult.success) {
@@ -473,9 +511,60 @@ Component.register('emporiqa-integration-index', {
                         message: this.$t('emporiqa-integration.settings.connection.copyUrl'),
                     });
                 }
-            } catch (e) {
+            } catch {
                 /* clipboard unavailable, ignore */
             }
+        },
+
+        parseEnabledLanguages(raw) {
+            let codes = raw;
+            if (typeof raw === 'string') {
+                try {
+                    codes = JSON.parse(raw);
+                } catch {
+                    codes = null;
+                }
+            }
+
+            return Array.isArray(codes) && codes.length > 0 ? codes : null;
+        },
+
+        isLanguageEnabled(code) {
+            return this.enabledLanguages === null || this.enabledLanguages.includes(code);
+        },
+
+        toggleLanguage(code, checked) {
+            if (typeof checked !== 'boolean') {
+                return;
+            }
+
+            const current = this.enabledLanguages === null
+                ? this.availableLanguages.map((language) => language.code)
+                : this.enabledLanguages;
+            const without = current.filter((c) => c !== code);
+
+            this.enabledLanguages = checked ? [...without, code] : without;
+        },
+
+        // Returns [] when every available language is selected, so languages
+        // added to the shop later are synced too. Returns null when nothing is
+        // selected, which is not a valid setting.
+        enabledLanguagesPayload() {
+            if (this.enabledLanguages === null) {
+                return [];
+            }
+
+            const available = this.availableLanguages.map((language) => language.code);
+            const selected = this.enabledLanguages.filter((code) => available.includes(code));
+
+            if (available.length > 0 && selected.length === 0) {
+                return null;
+            }
+
+            // Codes of languages that no longer exist in any domain are dropped
+            return available.length > 0 && selected.length === available.length
+                ? []
+                : selected;
         },
 
         setSetting(key, value) {

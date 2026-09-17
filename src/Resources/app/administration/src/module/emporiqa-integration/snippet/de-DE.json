@@ -70,7 +70,11 @@
                 "webhookUrl": "Webhook-URL",
                 "webhookUrlHelp": "Ändern Sie dies nur, wenn Sie eine eigene Emporiqa-Instanz betreiben.",
                 "batchSize": "Stapelgröße",
-                "batchSizeHelp": "Elemente pro Webhook-Stapel. Maximum: 200."
+                "batchSizeHelp": "Elemente pro Webhook-Stapel. Maximum: 200.",
+                "enabledLanguages": "Aktivierte Sprachen",
+                "enabledLanguagesHelp": "Wählen Sie, welche Sprachen in die synchronisierten Daten aufgenommen werden. Alle ausgewählten Sprachen werden in jedem Event gesendet. Auf Storefronts, deren Sprache nicht ausgewählt ist, wird das Chat-Widget ausgeblendet.",
+                "enabledLanguagesRequired": "Wählen Sie mindestens eine Sprache aus.",
+                "enabledLanguagesEmpty": "Keine Storefront-Sprachen gefunden. Legen Sie zuerst eine Domain für einen Storefront-Verkaufskanal an."
             }
         },
         "sync": {
@@ -118,6 +122,10 @@
             "show": "Befehle anzeigen",
             "hide": "Befehle ausblenden",
             "description": "Diese Befehle sind in der Shopware-CLI verfügbar. Jeder Synchronisierungsbefehl unterstützt auch ein --dry-run-Flag."
+        },
+        "configLink": {
+            "description": "Verbinden Sie Ihren Shop, wählen Sie die synchronisierten Sprachen und senden Sie Ihren Katalog auf der Emporiqa-Seite an Emporiqa.",
+            "button": "Emporiqa-Einstellungen öffnen"
         }
     }
 }

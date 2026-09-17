@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.1 (2026-09-17)
+
+### Behoben
+- **Seiteninhalte werden jetzt so gelesen, wie die Storefront sie darstellt.** Zugeordnete Felder, seitenspezifische Textüberschreibungen, Übersetzungs-Fallbacks und CMS-Elemente anderer Plugins (zum Beispiel FAQ-Akkordeons) sind in den synchronisierten Seiteninhalten enthalten.
+- **Seitenlinks führen immer zu einer echten Storefront-Seite.** Links verwenden die kanonische SEO-URL je Verkaufskanal und Sprache (deutsche Links von Erlebniswelten lieferten zuvor 404). Solange Shopware die SEO-URL noch nicht erzeugt hat, wird die technische Route gesendet und die Seite automatisch erneut synchronisiert, sobald die URL vorhanden ist oder sich ändert, auch bei Änderungen unter Einstellungen > SEO. Seiten, die in keinem synchronisierten Verkaufskanal erreichbar sind, werden aus Emporiqa entfernt statt verlinkt.
+- **Kategorien mit einem Landingpage-Layout werden als Seiten synchronisiert.** Wurzelkategorien (Navigation, Footer, Service) werden nie als Seiten synchronisiert.
+- **Eine Synchronisierung ohne passenden Verkaufskanal oder passende Sprache meldet einen Fehler** statt einer erfolgreichen Synchronisierung von null Elementen.
+- **Verkaufskanäle mit gleichem Namen werden nicht mehr zu einem Emporiqa-Kanal zusammengefasst**, und Produktlinks zeigen auf einen Verkaufskanal, in dem das Produkt sichtbar ist.
+- **Das Speichern der Plugin-Einstellungen kann die Zugangsdaten nicht mehr überschreiben**, solange sie noch geladen werden; unbekannte Sprachcodes werden abgelehnt.
+- **Darstellung der Statusmeldungen und Buttons in der Shopware-6.7-Administration.**
+- **Die an Emporiqa gemeldete Plugin-Version** (`plugin_version`, User-Agent) war noch 1.1.0.
+
+### Geändert
+- **Seitenänderungen in Echtzeit werden im Hintergrund verarbeitet** (Message Queue), sodass große Importe und Layout-Änderungen das Speichern nicht mehr verlangsamen. Eine Änderung an einem Layout der Erlebniswelten synchronisiert alle Seiten, die es verwenden, erneut.
+- **Die Plugin-Konfiguration entspricht den Regeln des Shopware Store.** Der Extension Manager wird nicht mehr überschrieben: „Erweiterungen > Konfigurieren“ öffnet die native Konfigurationsseite von Shopware, die jetzt auf die vollständige Emporiqa-Seite verweist (Verbindung, Sprachen, Synchronisierung). „Einstellungen > Emporiqa“ bleibt unverändert.
+- **Die statische Codeanalyse ist fehlerfrei**: veraltete Shopware-APIs ersetzt, XML-Service- und Routendefinitionen zu YAML migriert, Storefront-Plugins verwenden `window.PluginBaseClass`.
+- Der Hilfetext zu „Aktivierte Sprachen“ weist darauf hin, dass das Chat-Widget für nicht ausgewählte Sprachen ausgeblendet wird.
+- Für Entwickler: `PostPageFormatEvent` wird jetzt aus dem Message-Worker (nicht aus der Admin-Anfrage) ausgelöst, auch nach SEO-URL- und Layout-Änderungen.
+
 ## 1.1.1 (2026-09-02)
 
 ### Behoben

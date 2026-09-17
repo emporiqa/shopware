@@ -12,6 +12,7 @@ use Emporiqa\ShopwarePlugin\Service\ProductFormatterInterface;
 use Emporiqa\ShopwarePlugin\Service\SyncService;
 use Emporiqa\ShopwarePlugin\Service\WebhookClientInterface;
 use PHPUnit\Framework\MockObject\MockObject;
+use Emporiqa\ShopwarePlugin\Tests\Support\EntityCollectionHelper;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Content\Category\CategoryEntity;
@@ -35,6 +36,8 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 class SyncServiceTest extends TestCase
 {
+    use EntityCollectionHelper;
+
     private ConfigServiceInterface&MockObject $config;
     private WebhookClientInterface&MockObject $webhookClient;
     private ProductFormatterInterface&MockObject $productFormatter;
@@ -314,6 +317,7 @@ class SyncServiceTest extends TestCase
     {
         $emptyResult = $this->createMock(EntitySearchResult::class);
         $emptyResult->method('getIterator')->willReturn(new \ArrayIterator([]));
+        $emptyResult->method('getEntities')->willReturn(self::entityCollection(...[]));
 
         $salesChannelRepository = $this->createMock(EntityRepository::class);
         $salesChannelRepository->method('search')->willReturn($emptyResult);
@@ -391,6 +395,42 @@ class SyncServiceTest extends TestCase
         $this->assertSame(3, $result['events']);
     }
 
+    public function testSyncBatchPagesShopWindowIgnoresSkippedLandingPages(): void
+    {
+        $service = $this->createServiceWithBatchSize(3);
+
+        $landingPage1 = $this->createMock(LandingPageEntity::class);
+        $landingPage2 = $this->createMock(LandingPageEntity::class);
+        $category = $this->createMock(CategoryEntity::class);
+
+        $this->landingPageRepository
+            ->method('search')
+            ->willReturnOnConsecutiveCalls(
+                $this->wrapTotalResult(5),
+                $this->wrapSearchResult([$landingPage1, $landingPage2], EntityCollection::class),
+            );
+
+        $capturedShopCriteria = null;
+        $this->categoryRepository
+            ->method('search')
+            ->willReturnCallback(function (Criteria $criteria) use (&$capturedShopCriteria, $category) {
+                $capturedShopCriteria = $criteria;
+
+                return $this->wrapSearchResult([$category], EntityCollection::class);
+            });
+
+        // The second landing page has no storefront URL and is skipped.
+        $this->cmsPageFormatter->method('formatLandingPage')->willReturnOnConsecutiveCalls(['id' => 'lp'], null);
+        $this->cmsPageFormatter->method('formatShopPage')->willReturn(['id' => 'sp']);
+        $this->webhookClient->method('sendBatchEvents')->willReturn(true);
+
+        $result = $service->syncBatch('pages', 2, 'sess-1');
+
+        $this->assertSame(1, $capturedShopCriteria->getLimit());
+        $this->assertSame(2, $result['processed']);
+        $this->assertSame(2, $result['events']);
+    }
+
     public function testSyncBatchPagesSkipsShopPagesWhenLandingPagesFillBatch(): void
     {
         $service = $this->createServiceWithBatchSize(2);
@@ -413,6 +453,31 @@ class SyncServiceTest extends TestCase
 
         $this->assertTrue($result['success']);
         $this->assertSame(2, $result['processed']);
+    }
+
+    public function testBuildChannelContextsIncludesAllLanguagesWhenNoneConfigured(): void
+    {
+        $this->config->method('getEnabledLanguages')->willReturn([]);
+
+        $contexts = $this->service->buildChannelContexts();
+
+        $this->assertSame(['en-GB', 'de-DE'], array_column($contexts[''], 'languageCode'));
+    }
+
+    public function testBuildChannelContextsSkipsLanguagesNotEnabled(): void
+    {
+        $this->config->method('getEnabledLanguages')->willReturn(['de-DE']);
+
+        $contexts = $this->service->buildChannelContexts();
+
+        $this->assertSame(['de-DE'], array_column($contexts[''], 'languageCode'));
+    }
+
+    public function testBuildChannelContextsReturnsEmptyWhenNoDomainLanguageIsEnabled(): void
+    {
+        $this->config->method('getEnabledLanguages')->willReturn(['fr-FR']);
+
+        $this->assertSame([], $this->service->buildChannelContexts());
     }
 
     private function createServiceWithBatchSize(int $batchSize): SyncService
@@ -501,6 +566,7 @@ class SyncServiceTest extends TestCase
     {
         $result = $this->createMock(EntitySearchResult::class);
         $result->method('getIterator')->willReturn(new \ArrayIterator($elements));
+        $result->method('getEntities')->willReturn(self::entityCollection(...$elements));
         $result->method('count')->willReturn(\count($elements));
 
         return $result;
@@ -508,35 +574,41 @@ class SyncServiceTest extends TestCase
 
     private function mockSalesChannelSearch(): void
     {
-        $locale = new LocaleEntity();
-        $locale->setId(Uuid::randomHex());
-        $locale->setCode('en-GB');
-
-        $language = new LanguageEntity();
-        $language->setId(Uuid::randomHex());
-        $language->setLocale($locale);
-
         $currency = new CurrencyEntity();
         $currency->setId(Uuid::randomHex());
         $currency->setIsoCode('EUR');
         $currency->setFactor(1.0);
 
-        $domain = new SalesChannelDomainEntity();
-        $domain->setId(Uuid::randomHex());
-        $domain->setUrl('https://shop.example.com');
-        $domain->setLanguageId($language->getId());
-        $domain->setLanguage($language);
-        $domain->setCurrencyId($currency->getId());
-        $domain->setCurrency($currency);
+        $domains = [];
+        foreach (['en-GB' => 'https://shop.example.com', 'de-DE' => 'https://shop.example.com/de'] as $code => $url) {
+            $locale = new LocaleEntity();
+            $locale->setId(Uuid::randomHex());
+            $locale->setCode($code);
+
+            $language = new LanguageEntity();
+            $language->setId(Uuid::randomHex());
+            $language->setLocale($locale);
+
+            $domain = new SalesChannelDomainEntity();
+            $domain->setId(Uuid::randomHex());
+            $domain->setUrl($url);
+            $domain->setLanguageId($language->getId());
+            $domain->setLanguage($language);
+            $domain->setCurrencyId($currency->getId());
+            $domain->setCurrency($currency);
+            $domains[] = $domain;
+        }
 
         $salesChannel = new SalesChannelEntity();
         $salesChannel->setId('sc-1');
         $salesChannel->setActive(true);
         $salesChannel->setTypeId(Defaults::SALES_CHANNEL_TYPE_STOREFRONT);
-        $salesChannel->setDomains(new SalesChannelDomainCollection([$domain]));
+        $salesChannel->setNavigationCategoryId('root-nav');
+        $salesChannel->setDomains(new SalesChannelDomainCollection($domains));
 
         $result = $this->createMock(EntitySearchResult::class);
         $result->method('getIterator')->willReturn(new \ArrayIterator([$salesChannel]));
+        $result->method('getEntities')->willReturn(self::entityCollection(...[$salesChannel]));
         $this->salesChannelRepository->method('search')->willReturn($result);
     }
 }

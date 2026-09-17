@@ -34,6 +34,11 @@ interface ConfigServiceInterface
     public function getBrandAttribute(?string $salesChannelId = null): string;
 
     /**
+     * @return string[] Locale codes (e.g. en-GB) to include in synced data; empty means all languages
+     */
+    public function getEnabledLanguages(?string $salesChannelId = null): array;
+
+    /**
      * @return string[] Technical names of order/transaction states that trigger order.completed
      */
     public function getOrderCompletedStates(?string $salesChannelId = null): array;

@@ -17,7 +17,10 @@ use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsAnyFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\MultiFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\NotFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Psr\Log\LoggerInterface;
@@ -68,7 +71,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
 
         if (empty($channelContexts)) {
             return [
-                'success' => true,
+                'success' => false,
                 'products' => 0,
                 'events' => 0,
                 'errors' => ['No sales channels or languages resolved.'],
@@ -89,7 +92,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
             }
         }
 
-        $context = Context::createDefaultContext();
+        $context = Context::createCLIContext();
         $offset = 0;
 
         while (true) {
@@ -97,7 +100,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
             $criteria->setOffset($offset);
             $criteria->setLimit($batchSize);
 
-            $products = $this->productRepository->search($criteria, $context);
+            $products = $this->productRepository->search($criteria, $context)->getEntities();
 
             if ($products->count() === 0) {
                 break;
@@ -165,7 +168,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
 
         if (empty($channelContexts)) {
             return [
-                'success' => true,
+                'success' => false,
                 'pages' => 0,
                 'events' => 0,
                 'errors' => ['No sales channels or languages resolved.'],
@@ -186,7 +189,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
             }
         }
 
-        $context = Context::createDefaultContext();
+        $context = Context::createCLIContext();
         $offset = 0;
 
         while (true) {
@@ -194,7 +197,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
             $criteria->setOffset($offset);
             $criteria->setLimit($batchSize);
 
-            $landingPages = $this->landingPageRepository->search($criteria, $context);
+            $landingPages = $this->landingPageRepository->search($criteria, $context)->getEntities();
 
             if ($landingPages->count() === 0) {
                 break;
@@ -219,14 +222,14 @@ class SyncService implements SyncServiceInterface, ResetInterface
             }
         }
 
-        // Sync shop pages (categories with type='page')
+        // Sync shop pages (categories of type 'page' with a shop or landing page layout)
         $offset = 0;
         while (true) {
             $criteria = $this->buildShopPageCriteria();
             $criteria->setOffset($offset);
             $criteria->setLimit($batchSize);
 
-            $shopPages = $this->categoryRepository->search($criteria, $context);
+            $shopPages = $this->categoryRepository->search($criteria, $context)->getEntities();
 
             if ($shopPages->count() === 0) {
                 break;
@@ -342,7 +345,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
 
     public function countItems(string $entity): int
     {
-        $context = Context::createDefaultContext();
+        $context = Context::createCLIContext();
 
         if ($entity === 'products') {
             $criteria = new Criteria();
@@ -395,7 +398,8 @@ class SyncService implements SyncServiceInterface, ResetInterface
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('active', true));
         $criteria->addFilter(new EqualsFilter('type', 'page'));
-        $criteria->addFilter(new EqualsFilter('cmsPage.type', 'page'));
+        $criteria->addFilter(new EqualsAnyFilter('cmsPage.type', CmsPageFormatterInterface::SHOP_PAGE_LAYOUT_TYPES));
+        $criteria->addFilter(new NotFilter(MultiFilter::CONNECTION_AND, [new EqualsFilter('parentId', null)]));
         $criteria->setLimit(1);
         $criteria->setTotalCountMode(Criteria::TOTAL_COUNT_MODE_EXACT);
 
@@ -416,13 +420,13 @@ class SyncService implements SyncServiceInterface, ResetInterface
         }
 
         $offset = max(0, ($page - 1) * $batchSize);
-        $context = Context::createDefaultContext();
+        $context = Context::createCLIContext();
 
         $criteria = $this->buildProductCriteria();
         $criteria->setOffset($offset);
         $criteria->setLimit($batchSize);
 
-        $products = $this->productRepository->search($criteria, $context);
+        $products = $this->productRepository->search($criteria, $context)->getEntities();
 
         [$events, $processed] = $this->formatProductEvents($products, $channelContexts, $sessionId);
 
@@ -444,25 +448,29 @@ class SyncService implements SyncServiceInterface, ResetInterface
         }
 
         $offset = max(0, ($page - 1) * $batchSize);
-        $context = Context::createDefaultContext();
+        $context = Context::createCLIContext();
 
         $landingPageCount = $this->countLandingPages($context);
 
         $events = [];
         $processed = 0;
+        $landingPagesFetched = 0;
 
         if ($offset < $landingPageCount) {
             $criteria = $this->buildLandingPageCriteria();
             $criteria->setOffset($offset);
             $criteria->setLimit(min($batchSize, $landingPageCount - $offset));
 
-            $landingPages = $this->landingPageRepository->search($criteria, $context);
+            $landingPages = $this->landingPageRepository->search($criteria, $context)->getEntities();
+            $landingPagesFetched = $landingPages->count();
             [$landingEvents, $landingProcessed] = $this->formatLandingPageEvents($landingPages, $channelContexts, $sessionId);
             $events = array_merge($events, $landingEvents);
             $processed += $landingProcessed;
         }
 
-        $remaining = $batchSize - $processed;
+        // Based on fetched rows, not formatted pages, so skipped landing pages
+        // don't shift the shop page window into the next batch.
+        $remaining = $batchSize - $landingPagesFetched;
         if ($remaining > 0) {
             $shopPageOffset = max(0, $offset - $landingPageCount);
 
@@ -470,7 +478,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
             $criteria->setOffset($shopPageOffset);
             $criteria->setLimit($remaining);
 
-            $shopPages = $this->categoryRepository->search($criteria, $context);
+            $shopPages = $this->categoryRepository->search($criteria, $context)->getEntities();
             [$shopEvents, $shopProcessed] = $this->formatShopPageEvents($shopPages, $channelContexts, $sessionId);
             $events = array_merge($events, $shopEvents);
             $processed += $shopProcessed;
@@ -548,6 +556,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
         $criteria->addAssociation('cmsPage.sections.blocks.slots.translations');
         $criteria->addAssociation('translations');
         $criteria->addAssociation('salesChannels');
+        $criteria->getAssociation('seoUrls')->addFilter(new EqualsFilter('routeName', 'frontend.landing.page'), new EqualsFilter('isCanonical', true), new EqualsFilter('isDeleted', false));
 
         return $criteria;
     }
@@ -557,11 +566,13 @@ class SyncService implements SyncServiceInterface, ResetInterface
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('active', true));
         $criteria->addFilter(new EqualsFilter('type', 'page'));
-        $criteria->addFilter(new EqualsFilter('cmsPage.type', 'page'));
+        $criteria->addFilter(new EqualsAnyFilter('cmsPage.type', CmsPageFormatterInterface::SHOP_PAGE_LAYOUT_TYPES));
+        // Tree roots (navigation, footer, service) are not pages
+        $criteria->addFilter(new NotFilter(MultiFilter::CONNECTION_AND, [new EqualsFilter('parentId', null)]));
         $criteria->addSorting(new FieldSorting('id', FieldSorting::ASCENDING));
         $criteria->addAssociation('cmsPage.sections.blocks.slots.translations');
         $criteria->addAssociation('translations');
-        $criteria->addAssociation('seoUrls');
+        $criteria->getAssociation('seoUrls')->addFilter(new EqualsFilter('routeName', 'frontend.navigation.page'), new EqualsFilter('isCanonical', true), new EqualsFilter('isDeleted', false));
 
         return $criteria;
     }
@@ -602,8 +613,11 @@ class SyncService implements SyncServiceInterface, ResetInterface
         /** @var LandingPageEntity $landingPage */
         foreach ($landingPages as $landingPage) {
             $formatted = $this->cmsPageFormatter->formatLandingPage($landingPage, $channelContexts, $sessionId);
-            $events[] = ['type' => 'page.updated', 'data' => $formatted];
-            $processed++;
+
+            if ($formatted !== null) {
+                $events[] = ['type' => 'page.updated', 'data' => $formatted];
+                $processed++;
+            }
         }
 
         return [$events, $processed];
@@ -641,7 +655,9 @@ class SyncService implements SyncServiceInterface, ResetInterface
      * Build channel contexts from active sales channels and channel mapping config.
      *
      * Returns an array grouped by Emporiqa channel key, where each entry contains
-     * domain information (URL, language code, currency ISO, sales channel ID, language ID).
+     * domain information (URL, language code, currency ISO, sales channel ID, language ID)
+     * and the sales channel's tree roots (navigation, footer, service category IDs).
+     * Domains whose language is not in the enabled languages setting are skipped.
      *
      * @return array<string, array<int, array<string, string>>>
      */
@@ -651,15 +667,20 @@ class SyncService implements SyncServiceInterface, ResetInterface
             return $this->cachedChannelContexts;
         }
 
-        $context = Context::createDefaultContext();
+        $context = Context::createCLIContext();
         $channelMapping = $this->channelResolver->getMapping();
+        $enabledLanguages = $this->config->getEnabledLanguages();
 
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('active', true));
+        // Deterministic order, so the same domain wins the link on every run
+        $criteria->addSorting(new FieldSorting('createdAt', FieldSorting::ASCENDING));
+        $criteria->addSorting(new FieldSorting('id', FieldSorting::ASCENDING));
+        $criteria->getAssociation('domains')->addSorting(new FieldSorting('url', FieldSorting::ASCENDING));
         $criteria->addAssociation('domains.language.locale');
         $criteria->addAssociation('domains.currency');
 
-        $salesChannels = $this->salesChannelRepository->search($criteria, $context);
+        $salesChannels = $this->salesChannelRepository->search($criteria, $context)->getEntities();
 
         // Collect all contexts keyed by channel key
         $raw = [];
@@ -690,6 +711,9 @@ class SyncService implements SyncServiceInterface, ResetInterface
                 }
 
                 $langCode = $locale->getCode();
+                if ($enabledLanguages !== [] && !\in_array($langCode, $enabledLanguages, true)) {
+                    continue;
+                }
 
                 $currency = $domain->getCurrency();
                 $currencyIso = $currency !== null ? $currency->getIsoCode() : 'EUR';
@@ -698,14 +722,17 @@ class SyncService implements SyncServiceInterface, ResetInterface
                     'domainUrl' => rtrim($domain->getUrl(), '/'),
                     'languageCode' => $langCode,
                     'currencyIso' => $currencyIso,
-                    'currencyId' => $domain->getCurrencyId(),
+                    'currencyId' => $domain->getCurrencyId() ?? '',
                     'salesChannelId' => $salesChannel->getId(),
                     'languageId' => $language->getId(),
+                    'navigationCategoryId' => $salesChannel->getNavigationCategoryId(),
+                    'footerCategoryId' => $salesChannel->getFooterCategoryId() ?? '',
+                    'serviceCategoryId' => $salesChannel->getServiceCategoryId() ?? '',
                 ];
 
-                // Deduplicate by language+currency per channel key
+                // Deduplicate by sales channel+language+currency per channel key
                 // Keep first entry; only replace to upgrade HTTP → HTTPS
-                $dedupeKey = $langCode . '|' . $currencyIso;
+                $dedupeKey = $salesChannel->getId() . '|' . $langCode . '|' . $currencyIso;
                 if (!isset($raw[$emporiqaChannelKey][$dedupeKey])) {
                     $raw[$emporiqaChannelKey][$dedupeKey] = $entry;
                 } elseif (

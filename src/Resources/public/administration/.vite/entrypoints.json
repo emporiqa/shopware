@@ -3,11 +3,11 @@
   "entryPoints": {
     "emporiqa-integration": {
       "css": [
-        "/bundles/emporiqaintegration/administration/assets/emporiqa-integration-Be0KVYXY.css"
+        "/bundles/emporiqaintegration/administration/assets/emporiqa-integration-7HepZW18.css"
       ],
       "dynamic": [],
       "js": [
-        "/bundles/emporiqaintegration/administration/assets/emporiqa-integration-CpdkFWMQ.js"
+        "/bundles/emporiqaintegration/administration/assets/emporiqa-integration-BsUudS8U.js"
       ],
       "legacy": false,
       "preload": []

@@ -116,7 +116,7 @@ class WebhookClient implements WebhookClientInterface
                 return [
                     'success' => true,
                     'message' => 'Connection successful!',
-                    'dry_run' => $parsed ?? [],
+                    'dry_run' => \is_array($parsed) ? $parsed : [],
                 ];
             }
 
@@ -128,7 +128,7 @@ class WebhookClient implements WebhookClientInterface
                 return [
                     'success' => false,
                     'message' => $parsed['error'] ?? 'Validation failed.',
-                    'dry_run' => $parsed ?? [],
+                    'dry_run' => \is_array($parsed) ? $parsed : [],
                 ];
             }
 

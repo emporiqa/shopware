@@ -23,6 +23,7 @@ use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\System\SalesChannel\SalesChannelCollection;
 use Shopware\Core\System\SalesChannel\SalesChannelEntity;
@@ -213,7 +214,7 @@ class SyncController extends AbstractController
             $guard = $this->readSyncSessionGuard($sessionId);
             if ($guard !== null) {
                 $guard['errors'] = max(0, $guard['errors'] - 1);
-                $guard['synced'] += (int) ($result['processed'] ?? 0);
+                $guard['synced'] += $result['processed'];
                 $this->writeSyncSessionGuardData($sessionId, $guard);
             }
         }
@@ -421,7 +422,7 @@ class SyncController extends AbstractController
             $childrenCriteria->addAssociation('cover.media');
             $childrenCriteria->addAssociation('seoUrls');
 
-            $product = $this->productRepository->search($productCriteria, $context)->first();
+            $product = $this->productRepository->search($productCriteria, $context)->getEntities()->first();
             if ($product instanceof ProductEntity) {
                 $formatted = $this->productFormatter->formatProduct($product, $channelContexts);
                 $productPreview = $formatted[0] ?? null;
@@ -433,11 +434,17 @@ class SyncController extends AbstractController
             $pageCriteria->addAssociation('cmsPage.sections.blocks.slots.translations');
             $pageCriteria->addAssociation('translations');
             $pageCriteria->addAssociation('salesChannels');
-            $pageCriteria->setLimit(1);
+            $pageCriteria->addAssociation('seoUrls');
+            $pageCriteria->addSorting(new FieldSorting('createdAt', FieldSorting::ASCENDING));
+            $pageCriteria->setLimit(5);
 
-            $landingPage = $this->landingPageRepository->search($pageCriteria, $context)->first();
-            if ($landingPage instanceof LandingPageEntity) {
+            // The first landing page may not be reachable in a synced channel, try a few
+            $landingPages = $this->landingPageRepository->search($pageCriteria, $context)->getEntities();
+            foreach ($landingPages as $landingPage) {
                 $pagePreview = $this->cmsPageFormatter->formatLandingPage($landingPage, $channelContexts);
+                if ($pagePreview !== null) {
+                    break;
+                }
             }
 
             return new JsonResponse([
@@ -462,11 +469,16 @@ class SyncController extends AbstractController
             $criteria->addAssociation('domains.language.locale');
             $criteria->addAssociation('domains.currency');
 
-            $salesChannels = $this->salesChannelRepository->search($criteria, $context);
+            $salesChannels = $this->salesChannelRepository->search($criteria, $context)->getEntities();
             $result = [];
 
             /** @var SalesChannelEntity $salesChannel */
             foreach ($salesChannels as $salesChannel) {
+                // Headless channels are never synced, so they offer no languages
+                if ($salesChannel->getTypeId() === Defaults::SALES_CHANNEL_TYPE_API) {
+                    continue;
+                }
+
                 $domains = [];
                 $domainCollection = $salesChannel->getDomains();
                 if ($domainCollection !== null) {
@@ -477,7 +489,7 @@ class SyncController extends AbstractController
                         $languageCode = '';
                         if ($language !== null) {
                             $locale = $language->getLocale();
-                            $languageName = $language->getName() ?? ($locale !== null ? $locale->getCode() : '');
+                            $languageName = $language->getName();
                             if ($locale !== null) {
                                 $languageCode = $locale->getCode();
                             }
@@ -551,7 +563,7 @@ class SyncController extends AbstractController
                 /** @var StateMachineStateEntity $state */
                 $stateMachine = $state->getStateMachine();
                 $technicalName = $stateMachine !== null ? $stateMachine->getTechnicalName() : '';
-                $stateName = $state->getTranslation('name') ?? $state->getName() ?? '';
+                $stateName = $state->getTranslation('name') ?? $state->getName();
                 $stateTechnicalName = $state->getTechnicalName();
 
                 $entry = [
@@ -618,12 +630,12 @@ class SyncController extends AbstractController
             $childrenCriteria->addAssociation('prices');
             $childrenCriteria->addAssociation('seoUrls');
 
-            $products = $this->productRepository->search($criteria, $context);
+            $products = $this->productRepository->search($criteria, $context)->getEntities();
 
             // Prefer a product that has children (variants)
             $product = null;
             foreach ($products as $candidate) {
-                if ($candidate instanceof ProductEntity && $candidate->getChildren() && $candidate->getChildren()->count() > 0) {
+                if ($candidate->getChildren() && $candidate->getChildren()->count() > 0) {
                     $product = $candidate;
                     break;
                 }
@@ -649,7 +661,7 @@ class SyncController extends AbstractController
     }
 
     #[Route(path: '/api/_action/emporiqa/save-settings', name: 'api.action.emporiqa.save-settings', methods: ['POST'])]
-    public function saveSettings(Request $request): JsonResponse
+    public function saveSettings(Request $request, Context $context): JsonResponse
     {
         try {
             $data = json_decode($request->getContent(), true);
@@ -661,7 +673,7 @@ class SyncController extends AbstractController
             $allowedKeys = [
                 'channelMapping', 'brandAttribute', 'orderCompletedStates',
                 'storeId', 'webhookSecret', 'webhookUrl',
-                'syncProducts', 'syncPages', 'batchSize',
+                'syncProducts', 'syncPages', 'batchSize', 'enabledLanguages',
             ];
 
             $booleanKeys = [
@@ -669,29 +681,49 @@ class SyncController extends AbstractController
             ];
             $integerKeys = ['batchSize'];
 
+            // Validate everything first, so a rejected value never leaves a partial save behind.
+            $values = [];
             foreach ($allowedKeys as $key) {
-                if (\array_key_exists($key, $data)) {
-                    $value = $data[$key];
-
-                    if ($key === 'webhookUrl' && \is_string($value) && $value !== '') {
-                        if (!str_starts_with($value, 'https://')) {
-                            return new JsonResponse(
-                                ['error' => 'Webhook URL must use HTTPS.'],
-                                JsonResponse::HTTP_BAD_REQUEST,
-                            );
-                        }
-                    }
-
-                    if (\is_array($value)) {
-                        $value = json_encode($value);
-                    }
-                    if (\in_array($key, $booleanKeys, true)) {
-                        $value = (bool) $value;
-                    } elseif (\in_array($key, $integerKeys, true)) {
-                        $value = (int) $value;
-                    }
-                    $this->systemConfigService->set($prefix . $key, $value);
+                if (!\array_key_exists($key, $data)) {
+                    continue;
                 }
+                $value = $data[$key];
+
+                if ($key === 'webhookUrl' && \is_string($value) && $value !== '' && !str_starts_with($value, 'https://')) {
+                    return new JsonResponse(['error' => 'Webhook URL must use HTTPS.'], JsonResponse::HTTP_BAD_REQUEST);
+                }
+
+                if ($key === 'enabledLanguages') {
+                    if (!\is_array($value)) {
+                        return new JsonResponse(['error' => 'Enabled languages must be a list.'], JsonResponse::HTTP_BAD_REQUEST);
+                    }
+                    $value = array_values(array_unique(array_filter(
+                        $value,
+                        static fn ($code): bool => \is_string($code) && $code !== '',
+                    )));
+
+                    $unknown = array_values(array_diff($value, $this->storefrontLocaleCodes($context)));
+                    if ($unknown !== []) {
+                        return new JsonResponse(
+                            ['error' => 'Unknown language codes: ' . implode(', ', $unknown)],
+                            JsonResponse::HTTP_BAD_REQUEST,
+                        );
+                    }
+                }
+
+                if (\is_array($value)) {
+                    $value = json_encode($value);
+                }
+                if (\in_array($key, $booleanKeys, true)) {
+                    $value = (bool) $value;
+                } elseif (\in_array($key, $integerKeys, true)) {
+                    $value = (int) $value;
+                }
+                $values[$key] = $value;
+            }
+
+            foreach ($values as $key => $value) {
+                $this->systemConfigService->set($prefix . $key, $value);
             }
 
             return new JsonResponse(['success' => true]);
@@ -700,6 +732,35 @@ class SyncController extends AbstractController
                 'error' => 'Failed to save settings: ' . $e->getMessage(),
             ], JsonResponse::HTTP_INTERNAL_SERVER_ERROR);
         }
+    }
+
+    /**
+     * Locale codes of all storefront sales channel domains, the values the
+     * enabled languages setting is matched against.
+     *
+     * @return list<string>
+     */
+    private function storefrontLocaleCodes(Context $context): array
+    {
+        $criteria = new Criteria();
+        $criteria->addFilter(new EqualsFilter('active', true));
+        $criteria->addAssociation('domains.language.locale');
+
+        $codes = [];
+        $salesChannels = $this->salesChannelRepository->search($criteria, $context)->getEntities();
+        foreach ($salesChannels as $salesChannel) {
+            if ($salesChannel->getTypeId() === Defaults::SALES_CHANNEL_TYPE_API) {
+                continue;
+            }
+            foreach ($salesChannel->getDomains() ?? [] as $domain) {
+                $code = $domain->getLanguage()?->getLocale()?->getCode();
+                if ($code !== null && $code !== '') {
+                    $codes[$code] = $code;
+                }
+            }
+        }
+
+        return array_values($codes);
     }
 
     // -------------------------------------------------------------------------

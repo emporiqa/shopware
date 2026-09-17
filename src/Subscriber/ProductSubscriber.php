@@ -32,6 +32,8 @@ use Symfony\Contracts\Service\ResetInterface;
 
 class ProductSubscriber implements EventSubscriberInterface, ResetInterface
 {
+    use EntityWriteEventTrait;
+
     private const STOCK_ONLY_FIELDS = ['stock', 'availableStock', 'available', 'sales'];
     private const IGNORED_PAYLOAD_FIELDS = ['id', 'versionId', 'updatedAt', 'createdAt'];
     private const PRODUCT_ASSOCIATION_TABLES = ['product_media', 'product_price'];
@@ -108,8 +110,8 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
         }
 
         foreach ($event->getWriteResults() as $result) {
-            $productId = $result->getPrimaryKey();
-            if (!\is_string($productId)) {
+            $productId = self::primaryKeyId($result->getPrimaryKey());
+            if ($productId === null) {
                 continue;
             }
 
@@ -171,9 +173,7 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
         }
 
         foreach ($event->getIds() as $productId) {
-            if (\is_string($productId)) {
-                $this->queueAvailabilityEvent($productId, $event->getContext(), $channelContexts);
-            }
+            $this->queueAvailabilityEvent($productId, $event->getContext(), $channelContexts);
         }
     }
 
@@ -210,8 +210,8 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
         $channelContexts = null;
 
         foreach ($event->getWriteResults() as $result) {
-            $productId = $result->getPrimaryKey();
-            if (!\is_string($productId)) {
+            $productId = self::primaryKeyId($result->getPrimaryKey());
+            if ($productId === null) {
                 continue;
             }
 
@@ -294,7 +294,7 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
 
         foreach ($event->getWriteResults() as $result) {
             $productId = $result->getPayload()['productId'] ?? null;
-            if (!\is_string($productId)) {
+            if (!\is_string($productId) || $productId === '') {
                 continue;
             }
 
@@ -323,8 +323,8 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
         }
 
         foreach ($event->getWriteResults() as $result) {
-            $rowId = $result->getPrimaryKey();
-            if (!\is_string($rowId)) {
+            $rowId = self::primaryKeyId($result->getPrimaryKey());
+            if ($rowId === null) {
                 continue;
             }
 
@@ -565,7 +565,7 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
         $criteria->addAssociation('prices');
         $criteria->addAssociation('children.prices');
 
-        $product = $this->productRepository->search($criteria, $context)->first();
+        $product = $this->productRepository->search($criteria, $context)->getEntities()->first();
 
         return $product instanceof ProductEntity ? $product : null;
     }
@@ -584,7 +584,7 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
         $criteria->addAssociation('children');
         $criteria->addAssociation('visibilities');
 
-        $product = $this->productRepository->search($criteria, $context)->first();
+        $product = $this->productRepository->search($criteria, $context)->getEntities()->first();
 
         return $product instanceof ProductEntity ? $product : null;
     }
@@ -607,7 +607,7 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
         );
 
         foreach ($rows as $row) {
-            $this->pendingDeleteParents[(string) $row['id']] = isset($row['parent_id']) && $row['parent_id'] !== null
+            $this->pendingDeleteParents[(string) $row['id']] = isset($row['parent_id'])
                 ? (string) $row['parent_id']
                 : null;
         }

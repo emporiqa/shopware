@@ -65,7 +65,7 @@ class ChannelResolver implements ChannelResolverInterface, ResetInterface
      */
     private function autoDetect(): array
     {
-        $context = Context::createDefaultContext();
+        $context = Context::createCLIContext();
 
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('active', true));
@@ -74,12 +74,23 @@ class ChannelResolver implements ChannelResolverInterface, ResetInterface
         $salesChannels = $this->salesChannelRepository->search($criteria, $context);
 
         $mapping = [];
+        $used = [];
         /** @var SalesChannelEntity $salesChannel */
         foreach ($salesChannels as $salesChannel) {
             if ($salesChannel->getTypeId() === Defaults::SALES_CHANNEL_TYPE_API) {
                 continue;
             }
-            $mapping[$salesChannel->getId()] = self::slugify($salesChannel->getName() ?? $salesChannel->getId());
+
+            // Two channels with the same name (e.g. a cloned channel) must not
+            // collapse into one Emporiqa channel.
+            $slug = self::slugify($salesChannel->getName() ?? $salesChannel->getId());
+            $candidate = $slug;
+            for ($suffix = 2; isset($used[$candidate]); $suffix++) {
+                $candidate = $slug . '-' . $suffix;
+            }
+
+            $used[$candidate] = true;
+            $mapping[$salesChannel->getId()] = $candidate;
         }
 
         return $mapping;

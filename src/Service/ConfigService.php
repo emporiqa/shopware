@@ -93,6 +93,18 @@ class ConfigService implements ConfigServiceInterface
         return (string) $this->systemConfig->get(self::CONFIG_PREFIX . 'brandAttribute', $salesChannelId);
     }
 
+    public function getEnabledLanguages(?string $salesChannelId = null): array
+    {
+        $raw = $this->systemConfig->get(self::CONFIG_PREFIX . 'enabledLanguages', $salesChannelId);
+
+        $decoded = \is_array($raw) ? $raw : json_decode((string) $raw, true);
+        if (!\is_array($decoded)) {
+            return [];
+        }
+
+        return array_values(array_filter($decoded, static fn ($code): bool => \is_string($code) && $code !== ''));
+    }
+
     public function getOrderCompletedStates(?string $salesChannelId = null): array
     {
         $json = (string) $this->systemConfig->get(self::CONFIG_PREFIX . 'orderCompletedStates', $salesChannelId);

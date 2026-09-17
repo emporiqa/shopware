@@ -1,8 +1,5 @@
 import './page/emporiqa-integration-index';
 
-import enGB from './snippet/en-GB.json';
-import deDE from './snippet/de-DE.json';
-
 const { Module } = Shopware;
 
 Module.register('emporiqa-integration', {
@@ -12,11 +9,6 @@ Module.register('emporiqa-integration', {
     description: 'emporiqa-integration.general.description',
     color: '#1a73e8',
     icon: 'regular-cog',
-
-    snippets: {
-        'en-GB': enGB,
-        'de-DE': deDE,
-    },
 
     routes: {
         index: {

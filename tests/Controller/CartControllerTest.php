@@ -7,6 +7,7 @@ namespace Emporiqa\ShopwarePlugin\Tests\Controller;
 use Emporiqa\ShopwarePlugin\Controller\CartController;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
 use PHPUnit\Framework\MockObject\MockObject;
+use Emporiqa\ShopwarePlugin\Tests\Support\EntityCollectionHelper;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Checkout\Cart\LineItemFactoryRegistry;
 use Shopware\Core\Checkout\Cart\SalesChannel\CartService;
@@ -23,6 +24,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class CartControllerTest extends TestCase
 {
+    use EntityCollectionHelper;
+
     private CartService&MockObject $cartService;
     private LineItemFactoryRegistry&MockObject $lineItemFactory;
     private RequestStack&MockObject $requestStack;
@@ -308,6 +311,7 @@ class CartControllerTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($parent);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($parent));
         $this->productRepository->method('search')->willReturn($searchResult);
 
         $request = new Request([], [], [], [], [], [], json_encode(['product_id' => 'product-' . $parentId]));
@@ -343,6 +347,7 @@ class CartControllerTest extends TestCase
 
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($parent);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($parent));
         $this->productRepository->method('search')->willReturn($searchResult);
 
         $this->lineItemFactory->method('create')->willThrowException(new \RuntimeException('stop before cart service'));

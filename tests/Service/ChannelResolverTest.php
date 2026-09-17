@@ -7,6 +7,7 @@ namespace Emporiqa\ShopwarePlugin\Tests\Service;
 use Emporiqa\ShopwarePlugin\Service\ChannelResolver;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
 use PHPUnit\Framework\MockObject\MockObject;
+use Emporiqa\ShopwarePlugin\Tests\Support\EntityCollectionHelper;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Defaults;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
@@ -17,6 +18,8 @@ use Shopware\Core\System\SalesChannel\SalesChannelEntity;
 
 class ChannelResolverTest extends TestCase
 {
+    use EntityCollectionHelper;
+
     private ConfigServiceInterface&MockObject $config;
     private EntityRepository&MockObject $salesChannelRepository;
 
@@ -74,12 +77,33 @@ class ChannelResolverTest extends TestCase
 
         $result = $this->createMock(EntitySearchResult::class);
         $result->method('getIterator')->willReturn(new \ArrayIterator($channels));
+        $result->method('getEntities')->willReturn(self::entityCollection(...$channels));
         $this->salesChannelRepository->method('search')->willReturn($result);
 
         $resolver = $this->createResolver();
 
         $this->assertSame(['sc-1' => 'storefront'], $resolver->getMapping());
         $this->assertSame('storefront', $resolver->resolveChannelKey('sc-1'));
+    }
+
+    public function testDuplicateChannelNamesGetDistinctKeys(): void
+    {
+        $this->config->method('getChannelMapping')->willReturn([]);
+
+        $channels = [
+            $this->createSalesChannel('sc-1', 'Storefront'),
+            $this->createSalesChannel('sc-2', 'Storefront'),
+            $this->createSalesChannel('sc-3', 'Storefront'),
+        ];
+
+        $result = $this->createMock(EntitySearchResult::class);
+        $result->method('getIterator')->willReturn(new \ArrayIterator($channels));
+        $result->method('getEntities')->willReturn(self::entityCollection(...$channels));
+        $this->salesChannelRepository->method('search')->willReturn($result);
+
+        $mapping = $this->createResolver()->getMapping();
+
+        $this->assertSame(['sc-1' => 'storefront', 'sc-2' => 'storefront-2', 'sc-3' => 'storefront-3'], $mapping);
     }
 
     public function testMultipleChannelsAllGetSlugifiedNames(): void
@@ -94,6 +118,7 @@ class ChannelResolverTest extends TestCase
 
         $result = $this->createMock(EntitySearchResult::class);
         $result->method('getIterator')->willReturn(new \ArrayIterator($channels));
+        $result->method('getEntities')->willReturn(self::entityCollection(...$channels));
         $this->salesChannelRepository->method('search')->willReturn($result);
 
         $resolver = $this->createResolver();
@@ -115,6 +140,7 @@ class ChannelResolverTest extends TestCase
 
         $result = $this->createMock(EntitySearchResult::class);
         $result->method('getIterator')->willReturn(new \ArrayIterator($channels));
+        $result->method('getEntities')->willReturn(self::entityCollection(...$channels));
         $this->salesChannelRepository->method('search')->willReturn($result);
 
         $resolver = $this->createResolver();
@@ -149,6 +175,7 @@ class ChannelResolverTest extends TestCase
 
         $result = $this->createMock(EntitySearchResult::class);
         $result->method('getIterator')->willReturn(new \ArrayIterator($channels));
+        $result->method('getEntities')->willReturn(self::entityCollection(...$channels));
         $this->salesChannelRepository->method('search')->willReturn($result);
 
         $resolver = $this->createResolver();
@@ -170,6 +197,7 @@ class ChannelResolverTest extends TestCase
 
         $result = $this->createMock(EntitySearchResult::class);
         $result->method('getIterator')->willReturn(new \ArrayIterator($channels));
+        $result->method('getEntities')->willReturn(self::entityCollection(...$channels));
 
         $capturedCriteria = null;
         $this->salesChannelRepository->method('search')
@@ -195,6 +223,7 @@ class ChannelResolverTest extends TestCase
 
         $result = $this->createMock(EntitySearchResult::class);
         $result->method('getIterator')->willReturn(new \ArrayIterator([]));
+        $result->method('getEntities')->willReturn(self::entityCollection(...[]));
         $this->salesChannelRepository->method('search')->willReturn($result);
 
         $resolver = $this->createResolver();

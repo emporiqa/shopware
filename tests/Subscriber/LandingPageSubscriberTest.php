@@ -4,56 +4,47 @@ declare(strict_types=1);
 
 namespace Emporiqa\ShopwarePlugin\Tests\Subscriber;
 
+use Emporiqa\ShopwarePlugin\MessageQueue\Message\PageResyncMessage;
 use Emporiqa\ShopwarePlugin\MessageQueue\Message\WebhookMessage;
 use Emporiqa\ShopwarePlugin\Service\CmsPageFormatterInterface;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
-use Emporiqa\ShopwarePlugin\Service\SyncServiceInterface;
+use Emporiqa\ShopwarePlugin\Service\PageSyncRegistry;
 use Emporiqa\ShopwarePlugin\Subscriber\LandingPageSubscriber;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
-use Shopware\Core\Content\LandingPage\LandingPageEntity;
+use Psr\Log\LoggerInterface;
 use Shopware\Core\Content\LandingPage\LandingPageEvents;
-use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
-use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityDeletedEvent;
+use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenContainerEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
-use Psr\Log\LoggerInterface;
+use Shopware\Core\Framework\Event\NestedEventCollection;
+use Shopware\Core\Framework\Uuid\Uuid;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
-use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 class LandingPageSubscriberTest extends TestCase
 {
     private ConfigServiceInterface&MockObject $config;
     private CmsPageFormatterInterface&MockObject $cmsPageFormatter;
-    private SyncServiceInterface&MockObject $syncService;
-    private EntityRepository&MockObject $landingPageRepository;
+    private PageSyncRegistry $registry;
     private MessageBusInterface&MockObject $messageBus;
-    private LoggerInterface&MockObject $logger;
-    private EventDispatcherInterface&MockObject $eventDispatcher;
     private LandingPageSubscriber $subscriber;
 
     protected function setUp(): void
     {
         $this->config = $this->createMock(ConfigServiceInterface::class);
         $this->cmsPageFormatter = $this->createMock(CmsPageFormatterInterface::class);
-        $this->syncService = $this->createMock(SyncServiceInterface::class);
-        $this->landingPageRepository = $this->createMock(EntityRepository::class);
+        $this->registry = new PageSyncRegistry();
         $this->messageBus = $this->createMock(MessageBusInterface::class);
-        $this->logger = $this->createMock(LoggerInterface::class);
-        $this->eventDispatcher = $this->createMock(EventDispatcherInterface::class);
 
         $this->subscriber = new LandingPageSubscriber(
             $this->config,
             $this->cmsPageFormatter,
-            $this->syncService,
-            $this->landingPageRepository,
+            $this->registry,
             $this->messageBus,
-            $this->logger,
-            $this->eventDispatcher,
+            $this->createMock(LoggerInterface::class),
         );
     }
 
@@ -61,273 +52,167 @@ class LandingPageSubscriberTest extends TestCase
     {
         $events = LandingPageSubscriber::getSubscribedEvents();
 
-        $this->assertArrayHasKey(LandingPageEvents::LANDING_PAGE_WRITTEN_EVENT, $events);
-        $this->assertArrayHasKey(LandingPageEvents::LANDING_PAGE_DELETED_EVENT, $events);
-        $this->assertSame('onLandingPageWritten', $events[LandingPageEvents::LANDING_PAGE_WRITTEN_EVENT]);
+        // Runs after entity indexing (priority 1000) so SEO URLs are up to date.
+        $this->assertSame(['onEntityWrittenContainer', -100], $events[EntityWrittenContainerEvent::class]);
         $this->assertSame('onLandingPageDeleted', $events[LandingPageEvents::LANDING_PAGE_DELETED_EVENT]);
+        $this->assertArrayNotHasKey(LandingPageEvents::LANDING_PAGE_WRITTEN_EVENT, $events);
     }
 
-    public function testOnLandingPageWrittenSkipsWhenNotConfigured(): void
+    public function testWrittenSkipsWhenNotConfigured(): void
     {
         $this->config->method('isConfigured')->willReturn(false);
         $this->config->method('isSyncPagesEnabled')->willReturn(true);
+        $this->messageBus->expects($this->never())->method('dispatch');
 
-        $event = $this->createMock(EntityWrittenEvent::class);
-        $event->expects($this->never())->method('getWriteResults');
-
-        $this->subscriber->onLandingPageWritten($event);
+        $this->subscriber->onLandingPageWritten($this->writtenEvent(['page-1']));
     }
 
-    public function testOnLandingPageWrittenSkipsWhenSyncDisabled(): void
+    public function testWrittenSkipsWhenSyncDisabled(): void
     {
-        $this->config->method('isConfigured')->willReturn(true);
-        $this->config->method('isSyncPagesEnabled')->willReturn(false);
+        $this->configureEnabled(false);
+        $this->messageBus->expects($this->never())->method('dispatch');
 
-        $event = $this->createMock(EntityWrittenEvent::class);
-        $event->expects($this->never())->method('getWriteResults');
-
-        $this->subscriber->onLandingPageWritten($event);
+        $this->subscriber->onLandingPageWritten($this->writtenEvent(['page-1']));
     }
 
-    public function testOnLandingPageWrittenSkipsNonLiveVersion(): void
+    public function testWrittenSkipsNonLiveVersion(): void
     {
-        $this->config->method('isConfigured')->willReturn(true);
-        $this->config->method('isSyncPagesEnabled')->willReturn(true);
+        $this->configureEnabled();
+        $this->messageBus->expects($this->never())->method('dispatch');
 
-        $context = $this->createMock(Context::class);
-        $context->method('getVersionId')->willReturn('non-live-version-id');
-
-        $event = $this->createMock(EntityWrittenEvent::class);
-        $event->method('getContext')->willReturn($context);
-        $event->expects($this->never())->method('getWriteResults');
-
-        $this->subscriber->onLandingPageWritten($event);
+        $context = Context::createDefaultContext()->createWithVersionId(Uuid::randomHex());
+        $this->subscriber->onLandingPageWritten($this->writtenEvent(['page-1'], context: $context));
     }
 
-    public function testOnLandingPageWrittenDispatchesWebhookMessage(): void
+    public function testWrittenQueuesPageSyncWithCreatedIds(): void
     {
-        $this->config->method('isConfigured')->willReturn(true);
-        $this->config->method('isSyncPagesEnabled')->willReturn(true);
+        $this->configureEnabled();
+        $this->expectPageSync(landingPageIds: ['page-1', 'page-2'], createdIds: ['page-2']);
 
-        $context = $this->createMock(Context::class);
-        $context->method('getVersionId')->willReturn(Defaults::LIVE_VERSION);
-        $context->method('getSource')->willReturn(new \Shopware\Core\Framework\Api\Context\SystemSource());
-
-        $channelContexts = [
-            '' => [
-                ['languageCode' => 'en', 'domainUrl' => 'https://shop.example.com', 'currencyIso' => 'EUR', 'salesChannelId' => 'sc-1', 'languageId' => 'lang-en'],
-            ],
-        ];
-        $this->syncService->method('buildChannelContexts')->willReturn($channelContexts);
-
-        $writeResult = $this->createMock(EntityWriteResult::class);
-        $writeResult->method('getPrimaryKey')->willReturn('page-123');
-
-        $event = $this->createMock(EntityWrittenEvent::class);
-        $event->method('getContext')->willReturn($context);
-        $event->method('getWriteResults')->willReturn([$writeResult]);
-
-        $landingPage = $this->createMock(LandingPageEntity::class);
-        $landingPage->method('isActive')->willReturn(true);
-
-        $searchResult = $this->createMock(EntitySearchResult::class);
-        $searchResult->method('first')->willReturn($landingPage);
-        $this->landingPageRepository->method('search')->willReturn($searchResult);
-
-        $this->cmsPageFormatter->method('formatLandingPage')->willReturn([
-            'identification_number' => 'page-page-123',
-            'channels' => [''],
-            'titles' => ['' => ['en' => 'Test Page']],
-            'contents' => ['' => ['en' => 'Content']],
-            'links' => ['' => ['en' => 'https://shop.example.com/test']],
-        ]);
-
-        $this->messageBus
-            ->expects($this->once())
-            ->method('dispatch')
-            ->with($this->callback(function ($message) {
-                return $message instanceof WebhookMessage
-                    && count($message->getEvents()) === 1
-                    && $message->getEvents()[0]['type'] === 'page.updated';
-            }))
-            ->willReturn(new Envelope(new \stdClass()));
-
-        $this->subscriber->onLandingPageWritten($event);
+        $this->subscriber->onLandingPageWritten($this->writtenEvent(['page-1', 'page-2'], inserted: ['page-2']));
     }
 
-    public function testOnLandingPageWrittenSendsDeleteWhenInactive(): void
+    public function testCreatedIdsAreQueuedEvenWhenAlreadyClaimed(): void
     {
-        $this->config->method('isConfigured')->willReturn(true);
-        $this->config->method('isSyncPagesEnabled')->willReturn(true);
+        $this->configureEnabled();
+        $this->registry->claim(['page-old', 'page-new']);
+        $this->expectPageSync(landingPageIds: ['page-new'], createdIds: ['page-new']);
 
-        $context = $this->createMock(Context::class);
-        $context->method('getVersionId')->willReturn(Defaults::LIVE_VERSION);
-        $context->method('getSource')->willReturn(new \Shopware\Core\Framework\Api\Context\SystemSource());
-
-        $this->syncService->method('buildChannelContexts')->willReturn([
-            '' => [['languageCode' => 'en', 'domainUrl' => 'https://shop.example.com', 'currencyIso' => 'EUR', 'salesChannelId' => 'sc-1', 'languageId' => 'lang-en']],
-        ]);
-
-        $writeResult = $this->createMock(EntityWriteResult::class);
-        $writeResult->method('getPrimaryKey')->willReturn('page-inactive');
-
-        $event = $this->createMock(EntityWrittenEvent::class);
-        $event->method('getContext')->willReturn($context);
-        $event->method('getWriteResults')->willReturn([$writeResult]);
-
-        $landingPage = $this->createMock(LandingPageEntity::class);
-        $landingPage->method('isActive')->willReturn(false);
-
-        $searchResult = $this->createMock(EntitySearchResult::class);
-        $searchResult->method('first')->willReturn($landingPage);
-        $this->landingPageRepository->method('search')->willReturn($searchResult);
-
-        $this->cmsPageFormatter->method('formatPageDelete')->willReturn([
-            ['identification_number' => 'page-page-inactive'],
-        ]);
-
-        $this->messageBus
-            ->expects($this->once())
-            ->method('dispatch')
-            ->with($this->callback(function ($message) {
-                return $message instanceof WebhookMessage
-                    && count($message->getEvents()) === 1
-                    && $message->getEvents()[0]['type'] === 'page.deleted';
-            }))
-            ->willReturn(new Envelope(new \stdClass()));
-
-        $this->subscriber->onLandingPageWritten($event);
+        $this->subscriber->onLandingPageWritten($this->writtenEvent(['page-old', 'page-new'], inserted: ['page-new']));
     }
 
-    public function testOnLandingPageWrittenDeduplicatesPageIds(): void
+    public function testWrittenDeduplicatesPageIdsWithinRequest(): void
     {
-        $this->config->method('isConfigured')->willReturn(true);
-        $this->config->method('isSyncPagesEnabled')->willReturn(true);
-
-        $context = $this->createMock(Context::class);
-        $context->method('getVersionId')->willReturn(Defaults::LIVE_VERSION);
-        $context->method('getSource')->willReturn(new \Shopware\Core\Framework\Api\Context\SystemSource());
-
-        $this->syncService->method('buildChannelContexts')->willReturn([
-            '' => [['languageCode' => 'en', 'domainUrl' => 'https://shop.example.com', 'currencyIso' => 'EUR', 'salesChannelId' => 'sc-1', 'languageId' => 'lang-en']],
-        ]);
-
-        $writeResult1 = $this->createMock(EntityWriteResult::class);
-        $writeResult1->method('getPrimaryKey')->willReturn('page-dup');
-        $writeResult2 = $this->createMock(EntityWriteResult::class);
-        $writeResult2->method('getPrimaryKey')->willReturn('page-dup');
-
-        $event = $this->createMock(EntityWrittenEvent::class);
-        $event->method('getContext')->willReturn($context);
-        $event->method('getWriteResults')->willReturn([$writeResult1, $writeResult2]);
-
-        $landingPage = $this->createMock(LandingPageEntity::class);
-        $landingPage->method('isActive')->willReturn(true);
-        $searchResult = $this->createMock(EntitySearchResult::class);
-        $searchResult->method('first')->willReturn($landingPage);
-        $this->landingPageRepository->method('search')->willReturn($searchResult);
-
-        $this->cmsPageFormatter->method('formatLandingPage')->willReturn([
-            'identification_number' => 'page-page-dup',
-        ]);
-
+        $this->configureEnabled();
         $this->messageBus->expects($this->once())->method('dispatch')->willReturn(new Envelope(new \stdClass()));
 
-        $this->subscriber->onLandingPageWritten($event);
+        $this->subscriber->onLandingPageWritten($this->writtenEvent(['page-1']));
+        $this->subscriber->onLandingPageWritten($this->writtenEvent(['page-1']));
     }
 
-    public function testOnLandingPageDeletedSkipsWhenNotConfigured(): void
+    public function testWrittenSkipsIdsAlreadyClaimedByAnotherSubscriber(): void
     {
-        $this->config->method('isConfigured')->willReturn(false);
-        $this->config->method('isSyncPagesEnabled')->willReturn(true);
+        $this->configureEnabled();
+        $this->registry->claim(['page-1']);
+        $this->messageBus->expects($this->never())->method('dispatch');
 
-        $event = $this->createMock(EntityDeletedEvent::class);
-        $event->expects($this->never())->method('getWriteResults');
-
-        $this->subscriber->onLandingPageDeleted($event);
+        $this->subscriber->onLandingPageWritten($this->writtenEvent(['page-1']));
     }
 
-    public function testOnLandingPageDeletedDispatchesEvents(): void
+    public function testContainerEventHandlesLandingPageWritesOnly(): void
     {
-        $this->config->method('isConfigured')->willReturn(true);
-        $this->config->method('isSyncPagesEnabled')->willReturn(true);
+        $this->configureEnabled();
+        $this->expectPageSync(landingPageIds: ['page-1'], createdIds: []);
 
-        $context = $this->createMock(Context::class);
-        $context->method('getVersionId')->willReturn(Defaults::LIVE_VERSION);
+        $context = Context::createDefaultContext();
+        $this->subscriber->onEntityWrittenContainer(new EntityWrittenContainerEvent(
+            $context,
+            new NestedEventCollection([
+                new EntityWrittenEvent('product', [new EntityWriteResult('prod-1', [], 'product', EntityWriteResult::OPERATION_UPDATE)], $context),
+                $this->writtenEvent(['page-1']),
+            ]),
+            [],
+        ));
+    }
 
-        $writeResult = $this->createMock(EntityWriteResult::class);
-        $writeResult->method('getPrimaryKey')->willReturn('page-del-001');
+    public function testContainerEventIgnoresDeleteEvents(): void
+    {
+        $this->configureEnabled();
+        $this->messageBus->expects($this->never())->method('dispatch');
 
-        $event = $this->createMock(EntityDeletedEvent::class);
-        $event->method('getContext')->willReturn($context);
-        $event->method('getWriteResults')->willReturn([$writeResult]);
+        $context = Context::createDefaultContext();
+        $deleted = new EntityDeletedEvent('landing_page', [new EntityWriteResult('page-1', [], 'landing_page', EntityWriteResult::OPERATION_DELETE)], $context);
+        $this->subscriber->onEntityWrittenContainer(new EntityWrittenContainerEvent($context, new NestedEventCollection([$deleted]), []));
+    }
 
-        $this->cmsPageFormatter->method('formatPageDelete')->willReturn([
-            ['identification_number' => 'page-page-del-001'],
-        ]);
+    public function testDeletedDispatchesPageDeletedWebhook(): void
+    {
+        $this->configureEnabled();
+        $this->cmsPageFormatter->method('formatPageDelete')->willReturn([['identification_number' => 'page-page-1']]);
 
         $this->messageBus
             ->expects($this->once())
             ->method('dispatch')
-            ->with($this->callback(function ($message) {
-                return $message instanceof WebhookMessage
-                    && count($message->getEvents()) === 1
-                    && $message->getEvents()[0]['type'] === 'page.deleted';
-            }))
+            ->with($this->callback(fn ($message) => $message instanceof WebhookMessage
+                && $message->getEvents() === [['type' => 'page.deleted', 'data' => ['identification_number' => 'page-page-1']]]))
             ->willReturn(new Envelope(new \stdClass()));
 
-        $this->subscriber->onLandingPageDeleted($event);
+        $context = Context::createDefaultContext();
+        $this->subscriber->onLandingPageDeleted(new EntityDeletedEvent(
+            'landing_page',
+            [new EntityWriteResult('page-1', [], 'landing_page', EntityWriteResult::OPERATION_DELETE)],
+            $context,
+        ));
     }
 
-    public function testOnLandingPageDeletedSkipsNonLiveVersion(): void
+    public function testDeletedSkipsWhenNotConfigured(): void
     {
-        $this->config->method('isConfigured')->willReturn(true);
-        $this->config->method('isSyncPagesEnabled')->willReturn(true);
+        $this->config->method('isConfigured')->willReturn(false);
+        $this->messageBus->expects($this->never())->method('dispatch');
 
-        $context = $this->createMock(Context::class);
-        $context->method('getVersionId')->willReturn('draft-version-id');
-
-        $event = $this->createMock(EntityDeletedEvent::class);
-        $event->method('getContext')->willReturn($context);
-        $event->expects($this->never())->method('getWriteResults');
-
-        $this->subscriber->onLandingPageDeleted($event);
+        $context = Context::createDefaultContext();
+        $this->subscriber->onLandingPageDeleted(new EntityDeletedEvent(
+            'landing_page',
+            [new EntityWriteResult('page-1', [], 'landing_page', EntityWriteResult::OPERATION_DELETE)],
+            $context,
+        ));
     }
 
-    public function testResetClearsQueuedIds(): void
+    private function configureEnabled(bool $syncPages = true): void
     {
         $this->config->method('isConfigured')->willReturn(true);
-        $this->config->method('isSyncPagesEnabled')->willReturn(true);
+        $this->config->method('isSyncPagesEnabled')->willReturn($syncPages);
+    }
 
-        $context = $this->createMock(Context::class);
-        $context->method('getVersionId')->willReturn(Defaults::LIVE_VERSION);
-        $context->method('getSource')->willReturn(new \Shopware\Core\Framework\Api\Context\SystemSource());
+    /**
+     * @param list<string> $landingPageIds
+     * @param list<string> $createdIds
+     */
+    private function expectPageSync(array $landingPageIds, array $createdIds): void
+    {
+        $this->messageBus
+            ->expects($this->once())
+            ->method('dispatch')
+            ->with($this->callback(fn ($message) => $message instanceof PageResyncMessage
+                && $message->getLandingPageIds() === $landingPageIds
+                && $message->getCreatedIds() === $createdIds
+                && $message->getCategoryIds() === []
+                && $message->getCmsPageIds() === []))
+            ->willReturn(new Envelope(new \stdClass()));
+    }
 
-        $this->syncService->method('buildChannelContexts')->willReturn([
-            '' => [['languageCode' => 'en', 'domainUrl' => 'https://shop.example.com', 'currencyIso' => 'EUR', 'salesChannelId' => 'sc-1', 'languageId' => 'lang-en']],
-        ]);
+    /**
+     * @param list<string> $ids
+     * @param list<string> $inserted
+     */
+    private function writtenEvent(array $ids, array $inserted = [], ?Context $context = null): EntityWrittenEvent
+    {
+        $results = [];
+        foreach ($ids as $id) {
+            $operation = \in_array($id, $inserted, true) ? EntityWriteResult::OPERATION_INSERT : EntityWriteResult::OPERATION_UPDATE;
+            $results[] = new EntityWriteResult($id, ['name' => 'x'], 'landing_page', $operation);
+        }
 
-        $writeResult = $this->createMock(EntityWriteResult::class);
-        $writeResult->method('getPrimaryKey')->willReturn('page-reset');
-
-        $event = $this->createMock(EntityWrittenEvent::class);
-        $event->method('getContext')->willReturn($context);
-        $event->method('getWriteResults')->willReturn([$writeResult]);
-
-        $landingPage = $this->createMock(LandingPageEntity::class);
-        $landingPage->method('isActive')->willReturn(true);
-        $searchResult = $this->createMock(EntitySearchResult::class);
-        $searchResult->method('first')->willReturn($landingPage);
-        $this->landingPageRepository->method('search')->willReturn($searchResult);
-
-        $this->cmsPageFormatter->method('formatLandingPage')->willReturn([
-            'identification_number' => 'page-page-reset',
-        ]);
-
-        $this->messageBus->expects($this->exactly(2))->method('dispatch')->willReturn(new Envelope(new \stdClass()));
-
-        $this->subscriber->onLandingPageWritten($event);
-        $this->subscriber->reset();
-        $this->subscriber->onLandingPageWritten($event);
+        return new EntityWrittenEvent('landing_page', $results, $context ?? Context::createDefaultContext());
     }
 }

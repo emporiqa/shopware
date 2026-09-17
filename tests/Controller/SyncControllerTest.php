@@ -12,6 +12,15 @@ use Emporiqa\ShopwarePlugin\Service\ProductFormatterInterface;
 use Emporiqa\ShopwarePlugin\Service\SyncServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\WebhookClientInterface;
 use PHPUnit\Framework\MockObject\MockObject;
+use Shopware\Core\Defaults;
+use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
+use Shopware\Core\System\Language\LanguageEntity;
+use Shopware\Core\System\Locale\LocaleEntity;
+use Shopware\Core\System\SalesChannel\Aggregate\SalesChannelDomain\SalesChannelDomainCollection;
+use Shopware\Core\System\SalesChannel\Aggregate\SalesChannelDomain\SalesChannelDomainEntity;
+use Shopware\Core\System\SalesChannel\SalesChannelEntity;
+use Emporiqa\ShopwarePlugin\Tests\Support\EntityCollectionHelper;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
@@ -21,6 +30,8 @@ use Symfony\Component\Messenger\MessageBusInterface;
 
 class SyncControllerTest extends TestCase
 {
+    use EntityCollectionHelper;
+
     /** @var array<string, mixed> In-memory backing store for the SystemConfigService mock */
     private array $configStore = [];
 
@@ -28,6 +39,7 @@ class SyncControllerTest extends TestCase
     private WebhookClientInterface&MockObject $webhookClient;
     private ConfigServiceInterface&MockObject $configService;
     private SystemConfigService&MockObject $systemConfigService;
+    private EntityRepository&MockObject $salesChannelRepository;
     private SyncController $controller;
 
     protected function setUp(): void
@@ -46,7 +58,8 @@ class SyncControllerTest extends TestCase
         $productRepository = $this->createMock(EntityRepository::class);
         $landingPageRepository = $this->createMock(EntityRepository::class);
         $categoryRepository = $this->createMock(EntityRepository::class);
-        $salesChannelRepository = $this->createMock(EntityRepository::class);
+        $this->salesChannelRepository = $this->createMock(EntityRepository::class);
+        $this->mockStorefrontLanguages(['en-GB', 'de-DE']);
         $propertyGroupRepository = $this->createMock(EntityRepository::class);
         $stateMachineStateRepository = $this->createMock(EntityRepository::class);
         $messageBus = $this->createMock(MessageBusInterface::class);
@@ -76,12 +89,43 @@ class SyncControllerTest extends TestCase
             $productRepository,
             $landingPageRepository,
             $categoryRepository,
-            $salesChannelRepository,
+            $this->salesChannelRepository,
             $propertyGroupRepository,
             $stateMachineStateRepository,
             $this->systemConfigService,
             $messageBus,
         );
+    }
+
+    /**
+     * @param list<string> $localeCodes
+     */
+    private function mockStorefrontLanguages(array $localeCodes): void
+    {
+        $domains = [];
+        foreach ($localeCodes as $code) {
+            $locale = new LocaleEntity();
+            $locale->setId('locale-' . $code);
+            $locale->setCode($code);
+            $language = new LanguageEntity();
+            $language->setId('lang-' . $code);
+            $language->setLocale($locale);
+            $domain = new SalesChannelDomainEntity();
+            $domain->setId('domain-' . $code);
+            $domain->setUrl('https://shop.example.com/' . $code);
+            $domain->setLanguageId($language->getId());
+            $domain->setLanguage($language);
+            $domains[] = $domain;
+        }
+
+        $salesChannel = new SalesChannelEntity();
+        $salesChannel->setId('sc-1');
+        $salesChannel->setTypeId(Defaults::SALES_CHANNEL_TYPE_STOREFRONT);
+        $salesChannel->setDomains(new SalesChannelDomainCollection($domains));
+
+        $result = $this->createMock(EntitySearchResult::class);
+        $result->method('getEntities')->willReturn(self::entityCollection($salesChannel));
+        $this->salesChannelRepository->method('search')->willReturn($result);
     }
 
     private function jsonRequest(array $body): Request
@@ -92,6 +136,51 @@ class SyncControllerTest extends TestCase
     private function decode(Response $response): array
     {
         return json_decode((string) $response->getContent(), true);
+    }
+
+    // --- save-settings ---
+
+    public function testSaveSettingsStoresEnabledLanguagesAsCleanJsonList(): void
+    {
+        $response = $this->controller->saveSettings(
+            $this->jsonRequest(['enabledLanguages' => ['en-GB', 'de-DE', 'en-GB', '', 5]]),
+            Context::createDefaultContext(),
+        );
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('["en-GB","de-DE"]', $this->configStore['EmporiqaIntegration.config.enabledLanguages']);
+    }
+
+    public function testSaveSettingsRejectsNonListEnabledLanguages(): void
+    {
+        $response = $this->controller->saveSettings($this->jsonRequest(['enabledLanguages' => 'en-GB']), Context::createDefaultContext());
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertArrayNotHasKey('EmporiqaIntegration.config.enabledLanguages', $this->configStore);
+    }
+
+    public function testSaveSettingsRejectsLanguageCodesWithoutStorefrontDomain(): void
+    {
+        $response = $this->controller->saveSettings(
+            $this->jsonRequest(['enabledLanguages' => ['en-GB', 'fr-FR'], 'storeId' => 'new-store']),
+            Context::createDefaultContext(),
+        );
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertStringContainsString('fr-FR', $this->decode($response)['error']);
+        // Nothing is written when any value is rejected
+        $this->assertArrayNotHasKey('EmporiqaIntegration.config.storeId', $this->configStore);
+    }
+
+    public function testSaveSettingsWritesNothingWhenWebhookUrlIsRejected(): void
+    {
+        $response = $this->controller->saveSettings(
+            $this->jsonRequest(['storeId' => 'new-store', 'webhookUrl' => 'http://insecure.example.com/']),
+            Context::createDefaultContext(),
+        );
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertArrayNotHasKey('EmporiqaIntegration.config.storeId', $this->configStore);
     }
 
     // --- sync-init ---

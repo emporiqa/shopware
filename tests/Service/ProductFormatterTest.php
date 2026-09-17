@@ -582,6 +582,46 @@ class ProductFormatterTest extends TestCase
         $this->assertSame(['retail'], $result[0]['channels']);
     }
 
+    public function testFormatProductLinksToAVisibleSalesChannelWhenChannelKeyHasSeveral(): void
+    {
+        $visibility = $this->createMock(\Shopware\Core\Content\Product\Aggregate\ProductVisibility\ProductVisibilityEntity::class);
+        $visibility->method('getUniqueIdentifier')->willReturn('vis-2');
+        $visibility->method('getSalesChannelId')->willReturn('sc-2');
+        $visibilities = new \Shopware\Core\Content\Product\Aggregate\ProductVisibility\ProductVisibilityCollection([$visibility]);
+
+        $product = $this->createMock(ProductEntity::class);
+        $product->method('getId')->willReturn('prod-vis-2');
+        $product->method('getTranslation')->willReturnCallback(fn(string $f) => match ($f) { 'name' => 'Visible in sc-2', 'description' => '', default => null });
+        $product->method('getName')->willReturn('Visible in sc-2');
+        $product->method('getProductNumber')->willReturn('SKU-VIS-2');
+        $product->method('getChildren')->willReturn(null);
+        $product->method('getSeoUrls')->willReturn(null);
+        $product->method('getCategories')->willReturn(null);
+        $product->method('getManufacturer')->willReturn(null);
+        $product->method('getMedia')->willReturn(null);
+        $product->method('getCover')->willReturn(null);
+        $product->method('getPrice')->willReturn(null);
+        $product->method('getProperties')->willReturn(null);
+        $product->method('getTranslations')->willReturn(null);
+        $product->method('getAvailable')->willReturn(true);
+        $product->method('getAvailableStock')->willReturn(5);
+        $product->method('getStock')->willReturn(5);
+        $product->method('getVisibilities')->willReturn($visibilities);
+
+        // Two sales channels share the Emporiqa channel key; the product is only visible in the second
+        $contexts = [
+            'retail' => [
+                ['languageCode' => 'en', 'domainUrl' => 'https://shop.com', 'currencyIso' => 'EUR', 'currencyId' => 'c1', 'salesChannelId' => 'sc-1', 'languageId' => 'l1'],
+                ['languageCode' => 'en', 'domainUrl' => 'https://b2b.com', 'currencyIso' => 'EUR', 'currencyId' => 'c1', 'salesChannelId' => 'sc-2', 'languageId' => 'l1'],
+            ],
+        ];
+
+        $result = $this->formatter->formatProduct($product, $contexts);
+
+        $this->assertCount(1, $result);
+        $this->assertStringStartsWith('https://b2b.com', $result[0]['links']['retail']['en']);
+    }
+
     public function testFormatProductVisibilityReturnsEmptyWhenNotVisible(): void
     {
         $visibility = $this->createMock(\Shopware\Core\Content\Product\Aggregate\ProductVisibility\ProductVisibilityEntity::class);

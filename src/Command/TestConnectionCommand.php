@@ -51,7 +51,7 @@ class TestConnectionCommand extends Command
             $io->error($result['message']);
         }
 
-        if (isset($result['dry_run']) && \is_array($result['dry_run'])) {
+        if (isset($result['dry_run'])) {
             $this->displayDryRunResults($io, $result['dry_run']);
         }
 
@@ -97,12 +97,12 @@ class TestConnectionCommand extends Command
             $childrenCriteria->addAssociation('seoUrls');
             $childrenCriteria->addAssociation('translations');
 
-            $context = Context::createDefaultContext();
-            $products = $this->productRepository->search($criteria, $context);
+            $context = Context::createCLIContext();
+            $products = $this->productRepository->search($criteria, $context)->getEntities();
 
             $product = null;
             foreach ($products as $candidate) {
-                if ($candidate instanceof ProductEntity && $candidate->getChildren() && $candidate->getChildren()->count() > 0) {
+                if ($candidate->getChildren() && $candidate->getChildren()->count() > 0) {
                     $product = $candidate;
                     break;
                 }

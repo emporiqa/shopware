@@ -232,6 +232,47 @@ class ConfigServiceTest extends TestCase
     }
 
 
+    public function testGetEnabledLanguagesReturnsEmptyWhenUnset(): void
+    {
+        $this->systemConfig
+            ->method('get')
+            ->with('EmporiqaIntegration.config.enabledLanguages', null)
+            ->willReturn(null);
+
+        $this->assertSame([], $this->configService->getEnabledLanguages());
+    }
+
+    public function testGetEnabledLanguagesReturnsConfiguredCodes(): void
+    {
+        $this->systemConfig
+            ->method('get')
+            ->with('EmporiqaIntegration.config.enabledLanguages', null)
+            ->willReturn('["en-GB","",42,"de-DE"]');
+
+        $this->assertSame(['en-GB', 'de-DE'], $this->configService->getEnabledLanguages());
+    }
+
+    public function testGetEnabledLanguagesAcceptsArrayValues(): void
+    {
+        // Written as a real array through the system-config API instead of a JSON string
+        $this->systemConfig
+            ->method('get')
+            ->with('EmporiqaIntegration.config.enabledLanguages', null)
+            ->willReturn(['de-DE']);
+
+        $this->assertSame(['de-DE'], $this->configService->getEnabledLanguages());
+    }
+
+    public function testGetEnabledLanguagesReturnsEmptyOnInvalidJson(): void
+    {
+        $this->systemConfig
+            ->method('get')
+            ->with('EmporiqaIntegration.config.enabledLanguages', null)
+            ->willReturn('not-json');
+
+        $this->assertSame([], $this->configService->getEnabledLanguages());
+    }
+
     public function testGetBrandAttributeReturnsConfigured(): void
     {
         $this->systemConfig

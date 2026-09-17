@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.1 (2026-09-17)
+
+### Fixed
+- **Page content is now read the way the storefront renders it.** Mapped fields, per-page text overrides, translation fallback and CMS elements from other plugins (for example FAQ accordions) are included in synced page content.
+- **Page links always open a real storefront page.** Links use the canonical SEO URL per sales channel and language (German landing page links previously returned 404). While Shopware has not generated the SEO URL yet, the technical route is sent and the page is re-synced automatically once the URL exists or changes, including edits made under Settings > SEO. Pages that are not reachable in any synced sales channel are removed from Emporiqa instead of being linked.
+- **Categories with a landing page layout are synced as pages.** Tree roots (navigation, footer, service) are never synced as pages.
+- **A sync with no matching sales channel or language reports an error** instead of a successful sync of zero items.
+- **Sales channels sharing the same name no longer collapse into one Emporiqa channel**, and product links point to a sales channel the product is visible in.
+- **Saving the plugin settings can no longer wipe the credentials** while they are still loading, and unknown language codes are rejected.
+- **Shopware 6.7 admin styling** of the status banners and buttons.
+- **The plugin version reported to Emporiqa** (`plugin_version`, User-Agent) was still 1.1.0.
+
+### Changed
+- **Real-time page changes are processed in the background** (message queue), so large imports and layout edits no longer slow down saving. Changing a Shopping Experiences layout re-syncs every page that uses it.
+- **Plugin configuration complies with the Shopware store rules.** The Extension Manager is no longer overridden: Extensions > Configure opens Shopware's native configuration page, which now links to the full Emporiqa page (connect, languages, sync). Settings > Emporiqa is unchanged.
+- **Static code analysis is clean**: deprecated Shopware APIs replaced, XML service and route definitions migrated to YAML, storefront plugins use `window.PluginBaseClass`.
+- The Enabled languages help text mentions that the chat widget is hidden for unselected languages.
+- For developers: `PostPageFormatEvent` is now dispatched from the message worker (not the admin request) and also after SEO URL and layout changes.
+
 ## 1.1.1 (2026-09-02)
 
 ### Fixed

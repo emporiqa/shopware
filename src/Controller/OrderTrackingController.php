@@ -119,7 +119,7 @@ class OrderTrackingController extends StorefrontController
 
         $fetchContext = $context;
         $orderLanguageId = $slimOrder->getLanguageId();
-        if ($orderLanguageId !== null && $orderLanguageId !== $context->getLanguageId()) {
+        if ($orderLanguageId !== $context->getLanguageId()) {
             $fetchContext = new Context(
                 $context->getSource(),
                 languageIdChain: [$orderLanguageId, Defaults::LANGUAGE_SYSTEM],
@@ -135,7 +135,7 @@ class OrderTrackingController extends StorefrontController
         $criteria->addFilter(new EqualsFilter('orderNumber', $orderIdentifier));
         $criteria->setLimit(1);
 
-        $order = $this->orderRepository->search($criteria, $context)->first();
+        $order = $this->orderRepository->search($criteria, $context)->getEntities()->first();
 
         return $order instanceof OrderEntity ? $order : null;
     }
@@ -154,7 +154,7 @@ class OrderTrackingController extends StorefrontController
         $criteria->addAssociation('transactions.paymentMethod');
         $criteria->setLimit(1);
 
-        $order = $this->orderRepository->search($criteria, $context)->first();
+        $order = $this->orderRepository->search($criteria, $context)->getEntities()->first();
 
         return $order instanceof OrderEntity ? $order : null;
     }
@@ -193,7 +193,7 @@ class OrderTrackingController extends StorefrontController
                 $price = $lineItem->getPrice();
 
                 $items[] = [
-                    'name' => $lineItem->getLabel() ?? '',
+                    'name' => $lineItem->getLabel(),
                     'sku' => $payload['productNumber'] ?? '',
                     'quantity' => $lineItem->getQuantity(),
                     'total' => $price !== null ? round($price->getTotalPrice(), 2) : 0.0,
@@ -210,8 +210,8 @@ class OrderTrackingController extends StorefrontController
 
         return [
             'order_number' => $order->getOrderNumber(),
-            'status' => $state !== null ? ($state->getTranslation('name') ?? $state->getName() ?? '') : '',
-            'date_created' => $order->getOrderDateTime()?->format('c') ?? '',
+            'status' => $state !== null ? ($state->getTranslation('name') ?? $state->getName()) : '',
+            'date_created' => $order->getOrderDateTime()->format('c'),
             'total' => round($order->getAmountTotal(), 2),
             'currency' => $currency !== null ? $currency->getIsoCode() : 'EUR',
             'payment_method' => $this->extractPaymentMethod($order),

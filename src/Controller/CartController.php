@@ -299,7 +299,7 @@ class CartController extends StorefrontController
             $variationId = null;
 
             $payload = $lineItem->getPayload();
-            if (isset($payload['parentId']) && $payload['parentId'] !== null) {
+            if (isset($payload['parentId'])) {
                 $productId = $payload['parentId'];
                 $variationId = 'variation-' . $referencedId;
             }
@@ -436,7 +436,7 @@ class CartController extends StorefrontController
         $criteria->addAssociation('children');
 
         /** @var ProductEntity|null $product */
-        $product = $this->productRepository->search($criteria, $context->getContext())->first();
+        $product = $this->productRepository->search($criteria, $context->getContext())->getEntities()->first();
 
         if ($product === null) {
             return $productId;

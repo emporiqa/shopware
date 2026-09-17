@@ -7,133 +7,69 @@ namespace Emporiqa\ShopwarePlugin\Service;
 use Shopware\Core\Content\Category\CategoryEntity;
 use Shopware\Core\Content\Cms\CmsPageEntity;
 use Shopware\Core\Content\LandingPage\LandingPageEntity;
+use Shopware\Core\Content\Seo\SeoUrl\SeoUrlCollection;
 
 class CmsPageFormatter implements CmsPageFormatterInterface
 {
     use TranslationResolverTrait;
+
+    public function __construct(
+        private readonly ?CmsContentResolverInterface $contentResolver = null,
+    ) {
+    }
+
     /**
      * @param array<string, array<int, array<string, string>>> $channelContexts
-     * @return array<string, mixed>
+     * @return array<string, mixed>|null
      */
     public function formatLandingPage(
         LandingPageEntity $landingPage,
         array $channelContexts,
         ?string $syncSessionId = null,
-    ): array {
-        $channelContexts = $this->filterByAssignedChannels($landingPage, $channelContexts);
-        $channelKeys = array_keys($channelContexts);
+    ): ?array {
+        // The storefront only serves landing pages assigned to the sales channel.
+        // When the association was not loaded no restriction is applied.
+        $assignedChannels = $landingPage->getSalesChannels();
+        $assignedIds = $assignedChannels !== null ? array_flip($assignedChannels->getIds()) : null;
 
-        $pageUrl = $landingPage->getUrl() ?? '';
-
-        $titles = [];
-        $contents = [];
-        $links = [];
-
-        foreach ($channelContexts as $channelKey => $ctxList) {
-            $channelTitles = [];
-            $channelContents = [];
-            $channelLinks = [];
-
-            foreach ($ctxList as $ctx) {
-                $langCode = $ctx['languageCode'];
-                $languageId = $ctx['languageId'] ?? '';
-                $domainUrl = $ctx['domainUrl'];
-
-                if (!isset($channelTitles[$langCode])) {
-                    // SEO metaTitle takes precedence over the internal page name.
-                    $metaTitle = $this->getTranslatedString($landingPage, 'metaTitle', $languageId);
-                    $channelTitles[$langCode] = $metaTitle !== ''
-                        ? $metaTitle
-                        : $this->getTranslatedString($landingPage, 'name', $languageId);
-
-                    $description = '';
-                    $cmsPage = $landingPage->getCmsPage();
-                    if ($cmsPage !== null) {
-                        $slotOverride = $this->getTranslatedSlotConfig($landingPage, $languageId);
-                        $description = $this->extractCmsPageContent($cmsPage, $languageId, $slotOverride);
-                    }
-                    // Pages built purely from image/banner blocks resolve to no
-                    // extractable text, fall back to the meta description so
-                    // they don't sync with empty content.
-                    if ($description === '') {
-                        $description = $this->getTranslatedString($landingPage, 'metaDescription', $languageId);
-                    }
-                    $channelContents[$langCode] = $description;
-
-                    $channelLinks[$langCode] = rtrim($domainUrl, '/') . '/' . ltrim($pageUrl, '/');
-                }
-            }
-
-            $titles[$channelKey] = $channelTitles;
-            $contents[$channelKey] = $channelContents;
-            $links[$channelKey] = $channelLinks;
-        }
-
-        $data = [
-            'identification_number' => 'page-' . $landingPage->getId(),
-            'channels' => $channelKeys,
-            'titles' => $titles,
-            'contents' => $contents,
-            'links' => $links,
-        ];
-
-        if ($syncSessionId !== null) {
-            $data['sync_session_id'] = $syncSessionId;
-        }
-
-        return $data;
-    }
-
-    /**
-     * @param array<string, array<int, array<string, string>>> $channelContexts
-     * @return array<string, mixed>
-     */
-    public function formatCmsPage(
-        CmsPageEntity $cmsPage,
-        array $channelContexts,
-        ?string $syncSessionId = null,
-    ): array {
-        $channelKeys = array_keys($channelContexts);
+        $targets = $this->resolveTargets(
+            $channelContexts,
+            $landingPage->getSeoUrls(),
+            static fn (array $ctx): bool => $assignedIds === null || isset($assignedIds[$ctx['salesChannelId']]),
+            '/landingPage/' . $landingPage->getId(),
+        );
 
         $titles = [];
         $contents = [];
         $links = [];
 
-        foreach ($channelContexts as $channelKey => $ctxList) {
-            $channelTitles = [];
-            $channelContents = [];
-            $channelLinks = [];
+        foreach ($targets as ['channelKey' => $channelKey, 'context' => $ctx, 'link' => $link]) {
+            $langCode = $ctx['languageCode'];
+            $languageId = $ctx['languageId'];
 
-            foreach ($ctxList as $ctx) {
-                $langCode = $ctx['languageCode'];
-                $languageId = $ctx['languageId'] ?? '';
-                $domainUrl = $ctx['domainUrl'];
+            $titles[$channelKey][$langCode] = $this->getTranslatedTitle($landingPage, $languageId);
 
-                if (!isset($channelTitles[$langCode])) {
-                    $channelTitles[$langCode] = $this->getTranslatedString($cmsPage, 'name', $languageId);
-                    $channelContents[$langCode] = $this->extractCmsPageContent($cmsPage, $languageId);
-                    $channelLinks[$langCode] = $domainUrl;
-                }
+            $content = $this->contentResolver?->resolveLandingPageContent(
+                $landingPage->getId(),
+                $ctx['salesChannelId'],
+                $languageId,
+                $ctx['currencyId'] ?? '',
+            );
+            if ($content === null || $content === '') {
+                $content = $this->extractStoredContent($landingPage->getCmsPage(), $landingPage, $languageId);
+            }
+            // Pages built purely from image/banner blocks resolve to no
+            // extractable text, fall back to the meta description so
+            // they don't sync with empty content.
+            if ($content === '') {
+                $content = $this->getTranslatedString($landingPage, 'metaDescription', $languageId);
             }
 
-            $titles[$channelKey] = $channelTitles;
-            $contents[$channelKey] = $channelContents;
-            $links[$channelKey] = $channelLinks;
+            $contents[$channelKey][$langCode] = $content;
+            $links[$channelKey][$langCode] = $link;
         }
 
-        $data = [
-            'identification_number' => 'page-' . $cmsPage->getId(),
-            'channels' => $channelKeys,
-            'titles' => $titles,
-            'contents' => $contents,
-            'links' => $links,
-        ];
-
-        if ($syncSessionId !== null) {
-            $data['sync_session_id'] = $syncSessionId;
-        }
-
-        return $data;
+        return $this->buildPayload('page-' . $landingPage->getId(), $titles, $contents, $links, $syncSessionId);
     }
 
     public function formatShopPage(
@@ -141,109 +77,46 @@ class CmsPageFormatter implements CmsPageFormatterInterface
         array $channelContexts,
         ?string $syncSessionId = null,
     ): ?array {
-        $seoUrls = $category->getSeoUrls();
-        if ($seoUrls === null || $seoUrls->count() === 0) {
+        // Tree roots (navigation, footer, service) are not pages.
+        if ($category->getParentId() === null) {
             return null;
         }
 
-        // Build a lookup: salesChannelId → channelKey
-        $salesChannelToKey = [];
-        foreach ($channelContexts as $channelKey => $ctxList) {
-            foreach ($ctxList as $ctx) {
-                $salesChannelToKey[$ctx['salesChannelId']] = $channelKey;
-            }
-        }
-
-        // Build a lookup: salesChannelId+languageCode → domainUrl
-        $domainLookup = [];
-        foreach ($channelContexts as $ctxList) {
-            foreach ($ctxList as $ctx) {
-                $domainLookup[$ctx['salesChannelId'] . '|' . $ctx['languageId']] = $ctx['domainUrl'];
-            }
-        }
+        $targets = $this->resolveTargets(
+            $channelContexts,
+            $category->getSeoUrls(),
+            static fn (array $ctx): bool => self::isCategoryInChannel($category, $ctx),
+            '/navigation/' . $category->getId(),
+        );
 
         $titles = [];
         $contents = [];
         $links = [];
-        $channelKeys = [];
 
-        foreach ($seoUrls as $seoUrl) {
-            if ($seoUrl->getIsDeleted() || !$seoUrl->getIsCanonical()) {
-                continue;
+        foreach ($targets as ['channelKey' => $channelKey, 'context' => $ctx, 'link' => $link]) {
+            $langCode = $ctx['languageCode'];
+            $languageId = $ctx['languageId'];
+
+            $titles[$channelKey][$langCode] = $this->getTranslatedTitle($category, $languageId);
+
+            $content = $this->contentResolver?->resolveCategoryContent(
+                $category->getId(),
+                $ctx['salesChannelId'],
+                $languageId,
+                $ctx['currencyId'] ?? '',
+            );
+            if ($content === null || $content === '') {
+                $content = $this->extractStoredContent($category->getCmsPage(), $category, $languageId);
+            }
+            if ($content === '') {
+                $content = $this->getTranslatedString($category, 'description', $languageId);
             }
 
-            $salesChannelId = $seoUrl->getSalesChannelId();
-            if ($salesChannelId === null || !isset($salesChannelToKey[$salesChannelId])) {
-                continue;
-            }
-
-            $channelKey = $salesChannelToKey[$salesChannelId];
-            $languageId = $seoUrl->getLanguageId();
-            $domainUrl = $domainLookup[$salesChannelId . '|' . $languageId] ?? null;
-
-            if ($domainUrl === null) {
-                continue;
-            }
-
-            // Find language code for this languageId
-            $langCode = null;
-            foreach ($channelContexts[$channelKey] ?? [] as $ctx) {
-                if ($ctx['languageId'] === $languageId) {
-                    $langCode = $ctx['languageCode'];
-                    break;
-                }
-            }
-            if ($langCode === null) {
-                continue;
-            }
-
-            if (!isset($titles[$channelKey])) {
-                $channelKeys[] = $channelKey;
-                $titles[$channelKey] = [];
-                $contents[$channelKey] = [];
-                $links[$channelKey] = [];
-            }
-
-            if (!isset($titles[$channelKey][$langCode])) {
-                // SEO metaTitle takes precedence over the internal category name.
-                $metaTitle = $this->getTranslatedString($category, 'metaTitle', $languageId);
-                $titles[$channelKey][$langCode] = $metaTitle !== ''
-                    ? $metaTitle
-                    : $this->getTranslatedString($category, 'name', $languageId);
-
-                $description = '';
-                $cmsPage = $category->getCmsPage();
-                if ($cmsPage !== null) {
-                    $slotOverride = $this->getTranslatedSlotConfig($category, $languageId);
-                    $description = $this->extractCmsPageContent($cmsPage, $languageId, $slotOverride);
-                }
-                if ($description === '') {
-                    $description = $this->getTranslatedString($category, 'description', $languageId);
-                }
-                $contents[$channelKey][$langCode] = $description;
-
-                $seoPath = $seoUrl->getSeoPathInfo();
-                $links[$channelKey][$langCode] = rtrim($domainUrl, '/') . '/' . ltrim($seoPath, '/');
-            }
+            $contents[$channelKey][$langCode] = $content;
+            $links[$channelKey][$langCode] = $link;
         }
 
-        if (empty($channelKeys)) {
-            return null;
-        }
-
-        $data = [
-            'identification_number' => 'page-' . $category->getId(),
-            'channels' => array_unique($channelKeys),
-            'titles' => $titles,
-            'contents' => $contents,
-            'links' => $links,
-        ];
-
-        if ($syncSessionId !== null) {
-            $data['sync_session_id'] = $syncSessionId;
-        }
-
-        return $data;
+        return $this->buildPayload('page-' . $category->getId(), $titles, $contents, $links, $syncSessionId);
     }
 
     public function formatPageDelete(string $pageId): array
@@ -254,38 +127,117 @@ class CmsPageFormatter implements CmsPageFormatterInterface
     }
 
     /**
-     * Filter channel contexts to only include channels the landing page is assigned to.
-     * If no sales channels are assigned, the page is available on all channels.
+     * @param array<string, array<string, string>> $titles
+     * @param array<string, array<string, string>> $contents
+     * @param array<string, array<string, string>> $links
+     * @return array<string, mixed>|null
+     */
+    private function buildPayload(string $identificationNumber, array $titles, array $contents, array $links, ?string $syncSessionId): ?array
+    {
+        if ($titles === []) {
+            return null;
+        }
+
+        $data = [
+            'identification_number' => $identificationNumber,
+            'channels' => array_map('strval', array_keys($titles)),
+            'titles' => $titles,
+            'contents' => $contents,
+            'links' => $links,
+        ];
+
+        if ($syncSessionId !== null) {
+            $data['sync_session_id'] = $syncSessionId;
+        }
+
+        return $data;
+    }
+
+    /**
+     * One target per Emporiqa channel and language in which the page is reachable.
+     * The link is the canonical SEO URL of that sales channel and language when one
+     * exists, otherwise Shopware's technical route, which resolves in the storefront
+     * and redirects to the SEO URL once the indexer has generated it. Contexts with
+     * an SEO URL win over those without, and HTTPS domains over HTTP ones.
      *
      * @param array<string, array<int, array<string, string>>> $channelContexts
-     * @return array<string, array<int, array<string, string>>>
+     * @param callable(array<string, string>): bool $isReachable
+     * @return list<array{channelKey: string, context: array<string, string>, link: string}>
      */
-    private function filterByAssignedChannels(LandingPageEntity $landingPage, array $channelContexts): array
+    private function resolveTargets(array $channelContexts, ?SeoUrlCollection $seoUrls, callable $isReachable, string $technicalPath): array
     {
-        $assignedChannels = $landingPage->getSalesChannels();
-        if ($assignedChannels === null || $assignedChannels->count() === 0) {
-            return $channelContexts;
+        $seoPaths = [];
+        foreach ($seoUrls ?? [] as $seoUrl) {
+            $salesChannelId = $seoUrl->getSalesChannelId();
+            if ($salesChannelId === null || $seoUrl->getIsDeleted() || !$seoUrl->getIsCanonical()) {
+                continue;
+            }
+            $seoPaths[$salesChannelId . '|' . $seoUrl->getLanguageId()] ??= $seoUrl->getSeoPathInfo();
         }
 
-        $assignedIds = [];
-        foreach ($assignedChannels as $sc) {
-            $assignedIds[$sc->getId()] = true;
-        }
-
-        $filtered = [];
+        $targets = [];
+        $scores = [];
         foreach ($channelContexts as $channelKey => $ctxList) {
-            $matchingCtx = [];
             foreach ($ctxList as $ctx) {
-                if (isset($assignedIds[$ctx['salesChannelId']])) {
-                    $matchingCtx[] = $ctx;
+                if (!$isReachable($ctx)) {
+                    continue;
                 }
-            }
-            if (!empty($matchingCtx)) {
-                $filtered[$channelKey] = $matchingCtx;
+
+                $seoPath = $seoPaths[$ctx['salesChannelId'] . '|' . $ctx['languageId']] ?? null;
+                $score = ($seoPath !== null ? 2 : 0) + (str_starts_with($ctx['domainUrl'], 'https://') ? 1 : 0);
+
+                $targetKey = $channelKey . '|' . $ctx['languageCode'];
+                if (isset($scores[$targetKey]) && $scores[$targetKey] >= $score) {
+                    continue;
+                }
+
+                $scores[$targetKey] = $score;
+                $targets[$targetKey] = [
+                    'channelKey' => (string) $channelKey,
+                    'context' => $ctx,
+                    'link' => rtrim($ctx['domainUrl'], '/') . '/' . ltrim($seoPath ?? $technicalPath, '/'),
+                ];
             }
         }
 
-        return $filtered;
+        return array_values($targets);
+    }
+
+    /**
+     * A category is a page of a sales channel when it sits in the channel's
+     * navigation, footer or service tree. Contexts without tree information
+     * (e.g. altered by a PreSyncEvent listener) count the category as reachable.
+     *
+     * @param array<string, string> $ctx
+     */
+    private static function isCategoryInChannel(CategoryEntity $category, array $ctx): bool
+    {
+        if (!\array_key_exists('navigationCategoryId', $ctx)) {
+            return true;
+        }
+
+        $path = $category->getPath() ?? '';
+        foreach (['navigationCategoryId', 'footerCategoryId', 'serviceCategoryId'] as $rootField) {
+            $rootId = $ctx[$rootField] ?? '';
+            if ($rootId !== '' && str_contains($path, '|' . $rootId . '|')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Content read straight from the stored slot configs, used when the storefront
+     * content resolver is unavailable or fails.
+     */
+    private function extractStoredContent(?CmsPageEntity $cmsPage, object $entity, string $languageId): string
+    {
+        if ($cmsPage === null) {
+            return '';
+        }
+
+        return $this->extractCmsPageContent($cmsPage, $languageId, $this->getTranslatedSlotConfig($entity, $languageId));
     }
 
     /**

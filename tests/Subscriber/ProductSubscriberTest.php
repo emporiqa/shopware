@@ -11,6 +11,7 @@ use Emporiqa\ShopwarePlugin\Service\ProductFormatterInterface;
 use Emporiqa\ShopwarePlugin\Service\SyncServiceInterface;
 use Emporiqa\ShopwarePlugin\Subscriber\ProductSubscriber;
 use PHPUnit\Framework\MockObject\MockObject;
+use Emporiqa\ShopwarePlugin\Tests\Support\EntityCollectionHelper;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Content\Product\Events\ProductStockAlteredEvent;
 use Shopware\Core\Content\Product\ProductEntity;
@@ -31,6 +32,8 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 class ProductSubscriberTest extends TestCase
 {
+    use EntityCollectionHelper;
+
     private ConfigServiceInterface&MockObject $config;
     private ProductFormatterInterface&MockObject $productFormatter;
     private SyncServiceInterface&MockObject $syncService;
@@ -796,6 +799,7 @@ class ProductSubscriberTest extends TestCase
     {
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($product);
+        $searchResult->method('getEntities')->willReturn(self::entityCollection($product));
         $this->productRepository->method('search')->willReturn($searchResult);
     }
 }

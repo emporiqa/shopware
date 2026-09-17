@@ -1,4 +1,4 @@
-import Plugin from 'src/plugin-system/plugin.class';
+const Plugin = window.PluginBaseClass;
 
 const STORAGE_KEY = 'emporiqa_user_token';
 
@@ -25,7 +25,7 @@ export default class EmporiqaWidgetPlugin extends Plugin {
     async _loadWidget(config) {
         const loggedIn = (document.cookie.match(/(?:^|;\s*)sw-states=([^;]*)/) || [])[1]?.includes('logged-in') || false;
         const cached = this._getCachedEntry();
-        let userToken = null;
+        let userToken;
 
         if (cached !== undefined && cached.loggedIn === loggedIn) {
             userToken = cached.token;

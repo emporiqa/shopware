@@ -9,9 +9,15 @@ use Emporiqa\ShopwarePlugin\Service\ChannelResolverInterface;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
 use Emporiqa\ShopwarePlugin\Subscriber\StorefrontSubscriber;
 use PHPUnit\Framework\MockObject\MockObject;
+use Emporiqa\ShopwarePlugin\Tests\Support\EntityCollectionHelper;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
 use Shopware\Core\System\Currency\CurrencyEntity;
+use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
+use Shopware\Core\System\Language\LanguageEntity;
+use Shopware\Core\System\Locale\LocaleEntity;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Storefront\Event\StorefrontRenderEvent;
 use Symfony\Component\HttpFoundation\Request;
@@ -19,9 +25,12 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 class StorefrontSubscriberTest extends TestCase
 {
+    use EntityCollectionHelper;
+
     private ConfigServiceInterface&MockObject $config;
     private ChannelResolverInterface&MockObject $channelResolver;
     private EventDispatcherInterface&MockObject $eventDispatcher;
+    private EntityRepository&MockObject $languageRepository;
     private StorefrontSubscriber $subscriber;
 
     protected function setUp(): void
@@ -30,7 +39,8 @@ class StorefrontSubscriberTest extends TestCase
         $this->channelResolver = $this->createMock(ChannelResolverInterface::class);
         $this->eventDispatcher = $this->createMock(EventDispatcherInterface::class);
         $this->eventDispatcher->method('dispatch')->willReturnArgument(0);
-        $this->subscriber = new StorefrontSubscriber($this->config, $this->channelResolver, $this->eventDispatcher);
+        $this->languageRepository = $this->createMock(EntityRepository::class);
+        $this->subscriber = new StorefrontSubscriber($this->config, $this->channelResolver, $this->eventDispatcher, $this->languageRepository);
     }
 
     public function testGetSubscribedEventsReturnsCorrectEvents(): void
@@ -122,6 +132,79 @@ class StorefrontSubscriberTest extends TestCase
             ->with('emporiqaConfig', $this->callback(function (array $config) {
                 return $config['language'] === 'de_DE';
             }));
+
+        $this->subscriber->onStorefrontRender($event);
+    }
+
+    public function testOnStorefrontRenderSkipsWhenStorefrontLanguageIsNotEnabled(): void
+    {
+        $this->config->method('isConfigured')->willReturn(true);
+        $this->config->method('getStoreId')->willReturn('store-abc');
+        $this->config->method('getEnabledLanguages')->willReturn(['en-GB']);
+        $this->mockStorefrontLanguage('de-DE');
+
+        $salesChannelContext = $this->createSalesChannelContext('channel-1', null, 'lang-de');
+
+        $event = $this->createMock(StorefrontRenderEvent::class);
+        $event->method('getSalesChannelContext')->willReturn($salesChannelContext);
+        $event->method('getRequest')->willReturn(new Request());
+        $event->expects($this->never())->method('setParameter');
+
+        $this->subscriber->onStorefrontRender($event);
+    }
+
+    public function testOnStorefrontRenderShowsWidgetWhenStorefrontLanguageIsEnabled(): void
+    {
+        $this->config->method('isConfigured')->willReturn(true);
+        $this->config->method('getStoreId')->willReturn('store-abc');
+        $this->config->method('getWebhookUrl')->willReturn('https://emporiqa.com/webhooks/sync/');
+        $this->config->method('getEnabledLanguages')->willReturn(['en-GB', 'de-DE']);
+        $this->channelResolver->method('resolveChannelKey')->willReturn('');
+        $this->mockStorefrontLanguage('de-DE');
+
+        $salesChannelContext = $this->createSalesChannelContext('channel-1', null, 'lang-de');
+
+        $request = new Request();
+        $request->setLocale('de-DE');
+
+        $event = $this->createMock(StorefrontRenderEvent::class);
+        $event->method('getSalesChannelContext')->willReturn($salesChannelContext);
+        $event->method('getRequest')->willReturn($request);
+        $event->expects($this->once())->method('setParameter');
+
+        $this->subscriber->onStorefrontRender($event);
+    }
+
+    public function testOnStorefrontRenderKeepsWidgetWhenStorefrontLocaleIsUnknown(): void
+    {
+        $this->config->method('isConfigured')->willReturn(true);
+        $this->config->method('getStoreId')->willReturn('store-abc');
+        $this->config->method('getWebhookUrl')->willReturn('https://emporiqa.com/webhooks/sync/');
+        $this->config->method('getEnabledLanguages')->willReturn(['en-GB']);
+        $this->channelResolver->method('resolveChannelKey')->willReturn('');
+        $this->mockStorefrontLanguage(null);
+
+        $event = $this->createMock(StorefrontRenderEvent::class);
+        $event->method('getSalesChannelContext')->willReturn($this->createSalesChannelContext('channel-1', null, 'lang-unknown'));
+        $event->method('getRequest')->willReturn(new Request());
+        $event->expects($this->once())->method('setParameter');
+
+        $this->subscriber->onStorefrontRender($event);
+    }
+
+    public function testOnStorefrontRenderDoesNotQueryLanguageWhenAllLanguagesEnabled(): void
+    {
+        $this->config->method('isConfigured')->willReturn(true);
+        $this->config->method('getStoreId')->willReturn('store-abc');
+        $this->config->method('getWebhookUrl')->willReturn('https://emporiqa.com/webhooks/sync/');
+        $this->config->method('getEnabledLanguages')->willReturn([]);
+        $this->channelResolver->method('resolveChannelKey')->willReturn('');
+        $this->languageRepository->expects($this->never())->method('search');
+
+        $event = $this->createMock(StorefrontRenderEvent::class);
+        $event->method('getSalesChannelContext')->willReturn($this->createSalesChannelContext('channel-1'));
+        $event->method('getRequest')->willReturn(new Request());
+        $event->expects($this->once())->method('setParameter');
 
         $this->subscriber->onStorefrontRender($event);
     }
@@ -253,8 +336,11 @@ class StorefrontSubscriberTest extends TestCase
     /**
      * @return SalesChannelContext&MockObject
      */
-    private function createSalesChannelContext(string $salesChannelId, ?CustomerEntity $customer = null): SalesChannelContext&MockObject
-    {
+    private function createSalesChannelContext(
+        string $salesChannelId,
+        ?CustomerEntity $customer = null,
+        string $languageId = 'lang-en',
+    ): SalesChannelContext&MockObject {
         $currency = $this->createMock(CurrencyEntity::class);
         $currency->method('getIsoCode')->willReturn('EUR');
 
@@ -262,7 +348,27 @@ class StorefrontSubscriberTest extends TestCase
         $context->method('getSalesChannelId')->willReturn($salesChannelId);
         $context->method('getCustomer')->willReturn($customer);
         $context->method('getCurrency')->willReturn($currency);
+        $context->method('getLanguageId')->willReturn($languageId);
+        $context->method('getContext')->willReturn(Context::createDefaultContext());
 
         return $context;
+    }
+
+    private function mockStorefrontLanguage(?string $localeCode): void
+    {
+        $language = null;
+        if ($localeCode !== null) {
+            $locale = new LocaleEntity();
+            $locale->setId('locale-' . $localeCode);
+            $locale->setCode($localeCode);
+
+            $language = new LanguageEntity();
+            $language->setId('lang-' . $localeCode);
+            $language->setLocale($locale);
+        }
+
+        $result = $this->createMock(EntitySearchResult::class);
+        $result->method('getEntities')->willReturn(self::entityCollection($language));
+        $this->languageRepository->method('search')->willReturn($result);
     }
 }

@@ -196,7 +196,8 @@ class ConnectService implements ConnectServiceInterface
             throw new \InvalidArgumentException('Shop origin must not contain a query or fragment.');
         }
 
-        if (($parts['path'] ?? '') !== '' && ($parts['path'] ?? '') !== '/') {
+        $path = parse_url($raw, \PHP_URL_PATH);
+        if (\is_string($path) && $path !== '' && $path !== '/') {
             throw new \InvalidArgumentException('Shop origin must not contain a path.');
         }
 

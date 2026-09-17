@@ -2,6 +2,19 @@
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/shopware/shopware/trunk/src/Core/System/SystemConfig/Schema/config.xsd">
     <card>
+        <title>Emporiqa</title>
+        <title lang="de-DE">Emporiqa</title>
+
+        <component name="emporiqa-config-link">
+            <name>emporiqaConfigLink</name>
+            <label>Settings and synchronisation</label>
+            <label lang="de-DE">Einstellungen und Synchronisierung</label>
+            <helpText>The full Emporiqa page offers one-click connect, the language selection and the catalogue sync.</helpText>
+            <helpText lang="de-DE">Die vollständige Emporiqa-Seite bietet die Ein-Klick-Verbindung, die Sprachauswahl und die Katalog-Synchronisierung.</helpText>
+        </component>
+    </card>
+
+    <card>
         <title>Connection</title>
         <title lang="de-DE">Verbindung</title>
 
@@ -31,6 +44,8 @@
             <label>Sync Products</label>
             <label lang="de-DE">Produkte synchronisieren</label>
             <defaultValue>true</defaultValue>
+            <helpText>Send product changes to Emporiqa automatically.</helpText>
+            <helpText lang="de-DE">Produktänderungen automatisch an Emporiqa senden.</helpText>
         </input-field>
 
         <input-field type="bool">
@@ -38,6 +53,8 @@
             <label>Sync Pages</label>
             <label lang="de-DE">Seiten synchronisieren</label>
             <defaultValue>true</defaultValue>
+            <helpText>Send changes to landing pages and shop pages to Emporiqa automatically.</helpText>
+            <helpText lang="de-DE">Änderungen an Erlebniswelten und Shopseiten automatisch an Emporiqa senden.</helpText>
         </input-field>
 
     </card>

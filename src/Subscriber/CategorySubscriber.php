@@ -4,36 +4,37 @@ declare(strict_types=1);
 
 namespace Emporiqa\ShopwarePlugin\Subscriber;
 
+use Emporiqa\ShopwarePlugin\MessageQueue\Message\PageResyncMessage;
 use Emporiqa\ShopwarePlugin\MessageQueue\Message\WebhookMessage;
 use Emporiqa\ShopwarePlugin\Service\CmsPageFormatterInterface;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
-use Emporiqa\ShopwarePlugin\Service\SyncServiceInterface;
+use Emporiqa\ShopwarePlugin\Service\PageSyncRegistry;
 use Psr\Log\LoggerInterface;
-use Shopware\Core\Content\Category\CategoryCollection;
-use Shopware\Core\Content\Category\CategoryEntity;
+use Shopware\Core\Content\Category\CategoryDefinition;
 use Shopware\Core\Content\Category\CategoryEvents;
 use Shopware\Core\Defaults;
-use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityDeletedEvent;
+use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenContainerEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\Messenger\MessageBusInterface;
-use Symfony\Contracts\Service\ResetInterface;
 
-class CategorySubscriber implements EventSubscriberInterface, ResetInterface
+/**
+ * Queues changed categories for the background page sync; only categories that
+ * are shop pages produce webhooks there.
+ */
+class CategorySubscriber implements EventSubscriberInterface
 {
-    /** @var array<string, true> */
-    private array $queuedIds = [];
+    use EntityWriteEventTrait;
 
-    /**
-     * @param EntityRepository<CategoryCollection> $categoryRepository
-     */
+    /** Payload fields that can turn a shop page into a non-page (or back). */
+    private const STRUCTURAL_FIELDS = ['cmsPageId', 'type', 'active', 'parentId'];
+
     public function __construct(
         private readonly ConfigServiceInterface $config,
         private readonly CmsPageFormatterInterface $cmsPageFormatter,
-        private readonly SyncServiceInterface $syncService,
-        private readonly EntityRepository $categoryRepository,
+        private readonly PageSyncRegistry $registry,
         private readonly MessageBusInterface $messageBus,
         private readonly LoggerInterface $logger,
     ) {
@@ -42,9 +43,21 @@ class CategorySubscriber implements EventSubscriberInterface, ResetInterface
     public static function getSubscribedEvents(): array
     {
         return [
-            CategoryEvents::CATEGORY_WRITTEN_EVENT => 'onCategoryWritten',
+            // After Shopware's entity indexing (priority 1000), so SEO URLs of new or
+            // moved categories exist when the page is processed.
+            EntityWrittenContainerEvent::class => ['onEntityWrittenContainer', -100],
             CategoryEvents::CATEGORY_DELETED_EVENT => 'onCategoryDeleted',
         ];
+    }
+
+    public function onEntityWrittenContainer(EntityWrittenContainerEvent $event): void
+    {
+        foreach ($event->getEvents() ?? [] as $nested) {
+            $written = self::writtenEventOf($nested, CategoryDefinition::ENTITY_NAME);
+            if ($written !== null) {
+                $this->onCategoryWritten($written);
+            }
+        }
     }
 
     public function onCategoryWritten(EntityWrittenEvent $event): void
@@ -57,79 +70,44 @@ class CategorySubscriber implements EventSubscriberInterface, ResetInterface
             return;
         }
 
-        $context = $event->getContext();
-        $channelContexts = $this->syncService->buildChannelContexts();
+        $categoryIds = [];
+        $createdIds = [];
+        $structuralIds = [];
+        foreach ($event->getWriteResults() as $result) {
+            $categoryId = self::primaryKeyId($result->getPrimaryKey());
+            if ($categoryId === null) {
+                continue;
+            }
 
-        if (empty($channelContexts)) {
+            $categoryIds[$categoryId] = $categoryId;
+            if ($result->getOperation() === EntityWriteResult::OPERATION_INSERT) {
+                $createdIds[$categoryId] = $categoryId;
+            }
+            if (array_intersect_key($result->getPayload(), array_flip(self::STRUCTURAL_FIELDS)) !== []) {
+                $structuralIds[$categoryId] = $categoryId;
+            }
+        }
+
+        // Ids the SEO URL listener already queued in this request are skipped, except
+        // created or structurally changed ones: only this subscriber knows those flags,
+        // and the handler needs them to skip or send the right delete.
+        $fresh = $this->registry->claim(array_values($categoryIds));
+        $categoryIds = array_values(array_unique(array_merge($fresh, array_values($createdIds), array_values($structuralIds))));
+        if ($categoryIds === []) {
             return;
         }
 
-        foreach ($event->getWriteResults() as $result) {
-            $categoryId = $result->getPrimaryKey();
-            if (!\is_string($categoryId)) {
-                continue;
-            }
-
-            if (isset($this->queuedIds[$categoryId])) {
-                continue;
-            }
-
-            $criteria = new Criteria([$categoryId]);
-            $criteria->addAssociation('cmsPage.sections.blocks.slots.translations');
-            $criteria->addAssociation('translations');
-            $criteria->addAssociation('seoUrls');
-
-            /** @var CategoryEntity|null $category */
-            $category = $this->categoryRepository->search($criteria, $context)->first();
-
-            if ($category === null || $category->getType() !== 'page') {
-                continue;
-            }
-
-            $cmsPage = $category->getCmsPage();
-            if ($cmsPage === null || $cmsPage->getType() !== 'page') {
-                continue;
-            }
-
-            $this->queuedIds[$categoryId] = true;
-
-            // A deactivated shop page must be removed from Emporiqa rather
-            // than silently left in place (mirrors LandingPageSubscriber).
-            if (!$category->getActive()) {
-                $deletePayloads = $this->cmsPageFormatter->formatPageDelete($categoryId);
-                $events = [];
-                foreach ($deletePayloads as $deleteData) {
-                    $events[] = ['type' => 'page.deleted', 'data' => $deleteData];
-                }
-                if (!empty($events)) {
-                    try {
-                        $this->messageBus->dispatch(new WebhookMessage($events));
-                    } catch (\Throwable $e) {
-                        $this->logger->error('[Emporiqa] Failed to queue shop page deactivation webhook.', [
-                            'categoryId' => $categoryId,
-                            'error' => $e->getMessage(),
-                        ]);
-                    }
-                }
-                continue;
-            }
-
-            $formatted = $this->cmsPageFormatter->formatShopPage($category, $channelContexts);
-
-            if ($formatted === null) {
-                continue;
-            }
-
-            try {
-                $this->messageBus->dispatch(new WebhookMessage([
-                    ['type' => 'page.updated', 'data' => $formatted],
-                ]));
-            } catch (\Throwable $e) {
-                $this->logger->error('[Emporiqa] Failed to queue shop page webhook.', [
-                    'categoryId' => $categoryId,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+        try {
+            $this->messageBus->dispatch(new PageResyncMessage(
+                categoryIds: $categoryIds,
+                createdIds: array_values($createdIds),
+                structuralCategoryIds: array_values($structuralIds),
+            ));
+        } catch (\Throwable $e) {
+            $this->logger->error('[Emporiqa] Failed to queue shop page sync.', [
+                'categoryIds' => $categoryIds,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -144,36 +122,28 @@ class CategorySubscriber implements EventSubscriberInterface, ResetInterface
         }
 
         foreach ($event->getWriteResults() as $result) {
-            $categoryId = $result->getPrimaryKey();
-            if (!\is_string($categoryId)) {
+            $categoryId = self::primaryKeyId($result->getPrimaryKey());
+            if ($categoryId === null) {
                 continue;
             }
 
-            $deletePayloads = $this->cmsPageFormatter->formatPageDelete($categoryId);
-
             $events = [];
-            foreach ($deletePayloads as $deleteData) {
-                $events[] = [
-                    'type' => 'page.deleted',
-                    'data' => $deleteData,
-                ];
+            foreach ($this->cmsPageFormatter->formatPageDelete($categoryId) as $deleteData) {
+                $events[] = ['type' => 'page.deleted', 'data' => $deleteData];
             }
 
-            if (!empty($events)) {
-                try {
-                    $this->messageBus->dispatch(new WebhookMessage($events));
-                } catch (\Throwable $e) {
-                    $this->logger->error('[Emporiqa] Failed to queue shop page delete webhook.', [
-                        'categoryId' => $categoryId,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
+            if ($events === []) {
+                continue;
+            }
+
+            try {
+                $this->messageBus->dispatch(new WebhookMessage($events));
+            } catch (\Throwable $e) {
+                $this->logger->error('[Emporiqa] Failed to queue shop page delete webhook.', [
+                    'categoryId' => $categoryId,
+                    'error' => $e->getMessage(),
+                ]);
             }
         }
-    }
-
-    public function reset(): void
-    {
-        $this->queuedIds = [];
     }
 }
