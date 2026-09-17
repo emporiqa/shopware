@@ -74,7 +74,11 @@
                 "enabledLanguages": "Enabled Languages",
                 "enabledLanguagesHelp": "Select which languages to include in synced data. All selected languages are sent in each event. The chat widget is hidden on storefronts whose language is not selected.",
                 "enabledLanguagesRequired": "Select at least one language.",
-                "enabledLanguagesEmpty": "No storefront languages found. Add a domain to a storefront sales channel first."
+                "enabledLanguagesEmpty": "No storefront languages found. Add a domain to a storefront sales channel first.",
+                "enabledSalesChannels": "Synced Sales Channels",
+                "enabledSalesChannelsHelp": "Select which sales channels to sync to Emporiqa. Unselected channels are left out of product and page syncs and the chat widget is not shown on their storefronts.",
+                "enabledSalesChannelsRequired": "Select at least one sales channel.",
+                "enabledSalesChannelsEmpty": "No storefront sales channels found."
             }
         },
         "sync": {
@@ -124,7 +128,10 @@
             "description": "These commands are available in the Shopware CLI. Each sync command also supports a --dry-run flag."
         },
         "configLink": {
-            "description": "Connect your shop, choose the synced languages and send your catalogue to Emporiqa from the Emporiqa page.",
+            "connected": "Connected to Emporiqa (Store ID {storeId}).",
+            "manage": "Manage the synced sales channels and languages and send your catalogue to Emporiqa from the Emporiqa page.",
+            "notConnected": "Not connected yet.",
+            "description": "Open the Emporiqa page to connect your shop in one click, choose the synced sales channels and languages and send your catalogue.",
             "button": "Open Emporiqa settings"
         }
     }

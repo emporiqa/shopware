@@ -70,7 +70,7 @@ class TestConnectionCommand extends Command
         try {
             $channelContexts = $this->syncService->buildChannelContexts();
             if (empty($channelContexts)) {
-                $io->note('No channel contexts found. Using default test payload.');
+                $io->warning('No sales channels or languages resolved, nothing will be synced. Check the Synced sales channels and Enabled languages settings.');
                 return [];
             }
 

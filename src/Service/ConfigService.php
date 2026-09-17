@@ -95,14 +95,29 @@ class ConfigService implements ConfigServiceInterface
 
     public function getEnabledLanguages(?string $salesChannelId = null): array
     {
-        $raw = $this->systemConfig->get(self::CONFIG_PREFIX . 'enabledLanguages', $salesChannelId);
+        return $this->getStringList('enabledLanguages', $salesChannelId);
+    }
+
+    public function getEnabledSalesChannels(?string $salesChannelId = null): array
+    {
+        return $this->getStringList('enabledSalesChannels', $salesChannelId);
+    }
+
+    /**
+     * A JSON list setting (also accepted as a real array when written through the system-config API).
+     *
+     * @return string[]
+     */
+    private function getStringList(string $key, ?string $salesChannelId): array
+    {
+        $raw = $this->systemConfig->get(self::CONFIG_PREFIX . $key, $salesChannelId);
 
         $decoded = \is_array($raw) ? $raw : json_decode((string) $raw, true);
         if (!\is_array($decoded)) {
             return [];
         }
 
-        return array_values(array_filter($decoded, static fn ($code): bool => \is_string($code) && $code !== ''));
+        return array_values(array_filter($decoded, static fn ($value): bool => \is_string($value) && $value !== ''));
     }
 
     public function getOrderCompletedStates(?string $salesChannelId = null): array

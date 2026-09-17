@@ -657,7 +657,8 @@ class SyncService implements SyncServiceInterface, ResetInterface
      * Returns an array grouped by Emporiqa channel key, where each entry contains
      * domain information (URL, language code, currency ISO, sales channel ID, language ID)
      * and the sales channel's tree roots (navigation, footer, service category IDs).
-     * Domains whose language is not in the enabled languages setting are skipped.
+     * Sales channels and domain languages excluded by the enabled sales channels /
+     * enabled languages settings are skipped.
      *
      * @return array<string, array<int, array<string, string>>>
      */
@@ -670,6 +671,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
         $context = Context::createCLIContext();
         $channelMapping = $this->channelResolver->getMapping();
         $enabledLanguages = $this->config->getEnabledLanguages();
+        $enabledSalesChannels = $this->config->getEnabledSalesChannels();
 
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('active', true));
@@ -689,6 +691,10 @@ class SyncService implements SyncServiceInterface, ResetInterface
         foreach ($salesChannels as $salesChannel) {
             // Skip Headless API channels, they don't have public storefront URLs
             if ($salesChannel->getTypeId() === Defaults::SALES_CHANNEL_TYPE_API) {
+                continue;
+            }
+
+            if ($enabledSalesChannels !== [] && !\in_array($salesChannel->getId(), $enabledSalesChannels, true)) {
                 continue;
             }
 

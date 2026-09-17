@@ -52,7 +52,7 @@ class StorefrontSubscriber implements EventSubscriberInterface
             return;
         }
 
-        if (!$this->isLanguageEnabled($event->getSalesChannelContext())) {
+        if (!$this->isSalesChannelEnabled($salesChannelId) || !$this->isLanguageEnabled($event->getSalesChannelContext())) {
             return;
         }
 
@@ -89,6 +89,13 @@ class StorefrontSubscriber implements EventSubscriberInterface
         $emporiqaConfig = $widgetParamsEvent->getParams();
 
         $event->setParameter('emporiqaConfig', $emporiqaConfig);
+    }
+
+    private function isSalesChannelEnabled(string $salesChannelId): bool
+    {
+        $enabledSalesChannels = $this->config->getEnabledSalesChannels();
+
+        return $enabledSalesChannels === [] || \in_array($salesChannelId, $enabledSalesChannels, true);
     }
 
     private function isLanguageEnabled(SalesChannelContext $salesChannelContext): bool

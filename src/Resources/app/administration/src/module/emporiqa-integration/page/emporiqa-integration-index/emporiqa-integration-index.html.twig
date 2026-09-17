@@ -223,13 +223,35 @@
 
                     <div class="emporiqa-integration-index__languages">
                         <p class="emporiqa-integration-index__languages-label">
+                            {{ $t('emporiqa-integration.settings.advanced.enabledSalesChannels') }}
+                        </p>
+                        <sw-checkbox-field
+                            v-for="channel in availableSalesChannels"
+                            :key="channel.id"
+                            :value="isSelected(enabledSalesChannels, channel.id)"
+                            @update:value="toggleSelection('enabledSalesChannels', availableSalesChannels.map((entry) => entry.id), channel.id, $event)"
+                            :label="channel.name"
+                        />
+                        <p
+                            v-if="availableSalesChannels.length === 0"
+                            class="emporiqa-integration-index__help-text"
+                        >
+                            {{ $t('emporiqa-integration.settings.advanced.enabledSalesChannelsEmpty') }}
+                        </p>
+                        <p class="emporiqa-integration-index__help-text">
+                            {{ $t('emporiqa-integration.settings.advanced.enabledSalesChannelsHelp') }}
+                        </p>
+                    </div>
+
+                    <div class="emporiqa-integration-index__languages">
+                        <p class="emporiqa-integration-index__languages-label">
                             {{ $t('emporiqa-integration.settings.advanced.enabledLanguages') }}
                         </p>
                         <sw-checkbox-field
                             v-for="language in availableLanguages"
                             :key="language.code"
-                            :value="isLanguageEnabled(language.code)"
-                            @update:value="toggleLanguage(language.code, $event)"
+                            :value="isSelected(enabledLanguages, language.code)"
+                            @update:value="toggleSelection('enabledLanguages', availableLanguages.map((entry) => entry.code), language.code, $event)"
                             :label="`${language.name} (${language.code})`"
                         />
                         <p

@@ -175,6 +175,37 @@ class StorefrontSubscriberTest extends TestCase
         $this->subscriber->onStorefrontRender($event);
     }
 
+    public function testOnStorefrontRenderSkipsWhenSalesChannelIsNotEnabled(): void
+    {
+        $this->config->method('isConfigured')->willReturn(true);
+        $this->config->method('getStoreId')->willReturn('store-abc');
+        $this->config->method('getEnabledSalesChannels')->willReturn(['channel-other']);
+        $this->languageRepository->expects($this->never())->method('search');
+
+        $event = $this->createMock(StorefrontRenderEvent::class);
+        $event->method('getSalesChannelContext')->willReturn($this->createSalesChannelContext('channel-1'));
+        $event->method('getRequest')->willReturn(new Request());
+        $event->expects($this->never())->method('setParameter');
+
+        $this->subscriber->onStorefrontRender($event);
+    }
+
+    public function testOnStorefrontRenderShowsWidgetWhenSalesChannelIsEnabled(): void
+    {
+        $this->config->method('isConfigured')->willReturn(true);
+        $this->config->method('getStoreId')->willReturn('store-abc');
+        $this->config->method('getWebhookUrl')->willReturn('https://emporiqa.com/webhooks/sync/');
+        $this->config->method('getEnabledSalesChannels')->willReturn(['channel-1', 'channel-2']);
+        $this->channelResolver->method('resolveChannelKey')->willReturn('');
+
+        $event = $this->createMock(StorefrontRenderEvent::class);
+        $event->method('getSalesChannelContext')->willReturn($this->createSalesChannelContext('channel-1'));
+        $event->method('getRequest')->willReturn(new Request());
+        $event->expects($this->once())->method('setParameter');
+
+        $this->subscriber->onStorefrontRender($event);
+    }
+
     public function testOnStorefrontRenderKeepsWidgetWhenStorefrontLocaleIsUnknown(): void
     {
         $this->config->method('isConfigured')->willReturn(true);

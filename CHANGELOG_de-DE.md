@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2 (2026-09-17)
+
+### Hinzugefügt
+- **Einstellung „Synchronisierte Verkaufskanäle“.** Die Karte „Erweitert“ listet alle Storefront-Verkaufskanäle auf; nicht ausgewählte Kanäle werden bei der Produkt- und Seitensynchronisierung ausgelassen und das Chat-Widget wird auf ihren Storefronts nicht angezeigt. Standardmäßig bleiben alle Kanäle synchronisiert.
+- **„Erweiterungen > Konfigurieren“ öffnet wieder direkt die Emporiqa-Einstellungsseite** (keine doppelte Konfigurationsseite).
+
 ## 1.2.1 (2026-09-17)
 
 ### Behoben

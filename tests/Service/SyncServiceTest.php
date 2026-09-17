@@ -464,6 +464,20 @@ class SyncServiceTest extends TestCase
         $this->assertSame(['en-GB', 'de-DE'], array_column($contexts[''], 'languageCode'));
     }
 
+    public function testBuildChannelContextsSkipsSalesChannelsNotEnabled(): void
+    {
+        $this->config->method('getEnabledSalesChannels')->willReturn(['sc-other']);
+
+        $this->assertSame([], $this->service->buildChannelContexts());
+    }
+
+    public function testBuildChannelContextsIncludesEnabledSalesChannel(): void
+    {
+        $this->config->method('getEnabledSalesChannels')->willReturn(['sc-1']);
+
+        $this->assertSame(['en-GB', 'de-DE'], array_column($this->service->buildChannelContexts()[''], 'languageCode'));
+    }
+
     public function testBuildChannelContextsSkipsLanguagesNotEnabled(): void
     {
         $this->config->method('getEnabledLanguages')->willReturn(['de-DE']);

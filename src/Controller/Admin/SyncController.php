@@ -508,7 +508,7 @@ class SyncController extends AbstractController
 
                 $result[] = [
                     'id' => $salesChannel->getId(),
-                    'name' => $salesChannel->getName() ?? $salesChannel->getId(),
+                    'name' => $salesChannel->getTranslation('name') ?? $salesChannel->getName() ?? $salesChannel->getId(),
                     'domains' => $domains,
                 ];
             }
@@ -673,7 +673,7 @@ class SyncController extends AbstractController
             $allowedKeys = [
                 'channelMapping', 'brandAttribute', 'orderCompletedStates',
                 'storeId', 'webhookSecret', 'webhookUrl',
-                'syncProducts', 'syncPages', 'batchSize', 'enabledLanguages',
+                'syncProducts', 'syncPages', 'batchSize', 'enabledLanguages', 'enabledSalesChannels',
             ];
 
             $booleanKeys = [
@@ -693,19 +693,21 @@ class SyncController extends AbstractController
                     return new JsonResponse(['error' => 'Webhook URL must use HTTPS.'], JsonResponse::HTTP_BAD_REQUEST);
                 }
 
-                if ($key === 'enabledLanguages') {
+                if ($key === 'enabledLanguages' || $key === 'enabledSalesChannels') {
                     if (!\is_array($value)) {
-                        return new JsonResponse(['error' => 'Enabled languages must be a list.'], JsonResponse::HTTP_BAD_REQUEST);
+                        return new JsonResponse(['error' => 'Enabled languages and sales channels must be lists.'], JsonResponse::HTTP_BAD_REQUEST);
                     }
                     $value = array_values(array_unique(array_filter(
                         $value,
-                        static fn ($code): bool => \is_string($code) && $code !== '',
+                        static fn ($entry): bool => \is_string($entry) && $entry !== '',
                     )));
 
-                    $unknown = array_values(array_diff($value, $this->storefrontLocaleCodes($context)));
+                    $storefront = $this->storefrontSalesChannels($context);
+                    $known = $key === 'enabledLanguages' ? $storefront['localeCodes'] : $storefront['ids'];
+                    $unknown = array_values(array_diff($value, $known));
                     if ($unknown !== []) {
                         return new JsonResponse(
-                            ['error' => 'Unknown language codes: ' . implode(', ', $unknown)],
+                            ['error' => ($key === 'enabledLanguages' ? 'Unknown language codes: ' : 'Unknown sales channels: ') . implode(', ', $unknown)],
                             JsonResponse::HTTP_BAD_REQUEST,
                         );
                     }
@@ -735,23 +737,26 @@ class SyncController extends AbstractController
     }
 
     /**
-     * Locale codes of all storefront sales channel domains, the values the
-     * enabled languages setting is matched against.
+     * IDs of all active storefront sales channels and the locale codes of their
+     * domains, the values the enabled sales channels / languages settings are
+     * matched against.
      *
-     * @return list<string>
+     * @return array{ids: list<string>, localeCodes: list<string>}
      */
-    private function storefrontLocaleCodes(Context $context): array
+    private function storefrontSalesChannels(Context $context): array
     {
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('active', true));
         $criteria->addAssociation('domains.language.locale');
 
+        $ids = [];
         $codes = [];
         $salesChannels = $this->salesChannelRepository->search($criteria, $context)->getEntities();
         foreach ($salesChannels as $salesChannel) {
             if ($salesChannel->getTypeId() === Defaults::SALES_CHANNEL_TYPE_API) {
                 continue;
             }
+            $ids[] = $salesChannel->getId();
             foreach ($salesChannel->getDomains() ?? [] as $domain) {
                 $code = $domain->getLanguage()?->getLocale()?->getCode();
                 if ($code !== null && $code !== '') {
@@ -760,7 +765,7 @@ class SyncController extends AbstractController
             }
         }
 
-        return array_values($codes);
+        return ['ids' => $ids, 'localeCodes' => array_values($codes)];
     }
 
     // -------------------------------------------------------------------------

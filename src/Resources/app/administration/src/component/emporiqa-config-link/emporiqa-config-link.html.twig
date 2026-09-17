@@ -1,6 +1,17 @@
 {% block emporiqa_config_link %}
 <div class="emporiqa-config-link">
-    <p class="emporiqa-config-link__text">
+    <p
+        v-if="loaded && connected"
+        class="emporiqa-config-link__text"
+    >
+        <strong>{{ $t('emporiqa-integration.configLink.connected', { storeId }) }}</strong>
+        {{ $t('emporiqa-integration.configLink.manage') }}
+    </p>
+    <p
+        v-else-if="loaded"
+        class="emporiqa-config-link__text"
+    >
+        <strong>{{ $t('emporiqa-integration.configLink.notConnected') }}</strong>
         {{ $t('emporiqa-integration.configLink.description') }}
     </p>
     <sw-button

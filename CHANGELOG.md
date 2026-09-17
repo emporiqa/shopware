@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2 (2026-09-17)
+
+### Added
+- **Synced sales channels setting.** The Advanced card lists every storefront sales channel; unticked channels are left out of product and page syncs and the chat widget is not shown on their storefronts. All channels stay synced by default.
+- **Extensions > Configure opens the Emporiqa settings page directly again** (no duplicate configuration page).
+
 ## 1.2.1 (2026-09-17)
 
 ### Fixed

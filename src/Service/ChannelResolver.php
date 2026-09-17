@@ -83,7 +83,7 @@ class ChannelResolver implements ChannelResolverInterface, ResetInterface
 
             // Two channels with the same name (e.g. a cloned channel) must not
             // collapse into one Emporiqa channel.
-            $slug = self::slugify($salesChannel->getName() ?? $salesChannel->getId());
+            $slug = self::slugify($salesChannel->getTranslation('name') ?? $salesChannel->getName() ?? $salesChannel->getId());
             $candidate = $slug;
             for ($suffix = 2; isset($used[$candidate]); $suffix++) {
                 $candidate = $slug . '-' . $suffix;

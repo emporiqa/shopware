@@ -64,6 +64,9 @@ Component.register('emporiqa-integration-index', {
             // Locale codes to sync; null means all languages (nothing saved yet)
             enabledLanguages: null,
 
+            // Sales channel IDs to sync; null means all storefront channels (nothing saved yet)
+            enabledSalesChannels: null,
+
             // Connection test
             isTestingConnection: false,
             connectionResult: null,
@@ -124,6 +127,10 @@ Component.register('emporiqa-integration-index', {
 
         isConnected() {
             return !!(this.settings.storeId && this.settings.webhookSecret);
+        },
+
+        availableSalesChannels() {
+            return this.salesChannels.map((channel) => ({ id: channel.id, name: channel.name }));
         },
 
         availableLanguages() {
@@ -207,7 +214,8 @@ Component.register('emporiqa-integration-index', {
                             this.settings[key] = vals[prefixedKey];
                         }
                     });
-                    this.enabledLanguages = this.parseEnabledLanguages(vals[`${CONFIG_PREFIX}enabledLanguages`]);
+                    this.enabledLanguages = this.parseSelection(vals[`${CONFIG_PREFIX}enabledLanguages`]);
+                    this.enabledSalesChannels = this.parseSelection(vals[`${CONFIG_PREFIX}enabledSalesChannels`]);
                 })
                 .catch(() => {
                     this.loadError = true;
@@ -223,10 +231,18 @@ Component.register('emporiqa-integration-index', {
                 return;
             }
 
-            const enabledLanguages = this.enabledLanguagesPayload();
+            const enabledLanguages = this.selectionPayload(this.enabledLanguages, this.availableLanguages.map((language) => language.code));
             if (enabledLanguages === null) {
                 this.createNotificationError({
                     message: this.$t('emporiqa-integration.settings.advanced.enabledLanguagesRequired'),
+                });
+                return;
+            }
+
+            const enabledSalesChannels = this.selectionPayload(this.enabledSalesChannels, this.availableSalesChannels.map((channel) => channel.id));
+            if (enabledSalesChannels === null) {
+                this.createNotificationError({
+                    message: this.$t('emporiqa-integration.settings.advanced.enabledSalesChannelsRequired'),
                 });
                 return;
             }
@@ -235,7 +251,7 @@ Component.register('emporiqa-integration-index', {
             this.settingsSaved = false;
             this.saveError = false;
 
-            this.emporiqaService.saveSettings({ ...this.settings, enabledLanguages })
+            this.emporiqaService.saveSettings({ ...this.settings, enabledLanguages, enabledSalesChannels })
                 .then(() => {
                     this.settingsSaved = true;
                     setTimeout(() => { this.settingsSaved = false; }, 3000);
@@ -516,52 +532,49 @@ Component.register('emporiqa-integration-index', {
             }
         },
 
-        parseEnabledLanguages(raw) {
-            let codes = raw;
+        parseSelection(raw) {
+            let values = raw;
             if (typeof raw === 'string') {
                 try {
-                    codes = JSON.parse(raw);
+                    values = JSON.parse(raw);
                 } catch {
-                    codes = null;
+                    values = null;
                 }
             }
 
-            return Array.isArray(codes) && codes.length > 0 ? codes : null;
+            return Array.isArray(values) && values.length > 0 ? values : null;
         },
 
-        isLanguageEnabled(code) {
-            return this.enabledLanguages === null || this.enabledLanguages.includes(code);
+        // null = nothing saved = everything selected
+        isSelected(selection, value) {
+            return selection === null || selection.includes(value);
         },
 
-        toggleLanguage(code, checked) {
+        toggleSelection(key, available, value, checked) {
             if (typeof checked !== 'boolean') {
                 return;
             }
 
-            const current = this.enabledLanguages === null
-                ? this.availableLanguages.map((language) => language.code)
-                : this.enabledLanguages;
-            const without = current.filter((c) => c !== code);
+            const current = this[key] === null ? available : this[key];
+            const without = current.filter((entry) => entry !== value);
 
-            this.enabledLanguages = checked ? [...without, code] : without;
+            this[key] = checked ? [...without, value] : without;
         },
 
-        // Returns [] when every available language is selected, so languages
-        // added to the shop later are synced too. Returns null when nothing is
-        // selected, which is not a valid setting.
-        enabledLanguagesPayload() {
-            if (this.enabledLanguages === null) {
+        // Returns [] when everything available is selected, so entries added to the
+        // shop later are synced too. Returns null when nothing is selected, which
+        // is not a valid setting. Entries that no longer exist are dropped.
+        selectionPayload(selection, available) {
+            if (selection === null) {
                 return [];
             }
 
-            const available = this.availableLanguages.map((language) => language.code);
-            const selected = this.enabledLanguages.filter((code) => available.includes(code));
+            const selected = selection.filter((value) => available.includes(value));
 
             if (available.length > 0 && selected.length === 0) {
                 return null;
             }
 
-            // Codes of languages that no longer exist in any domain are dropped
             return available.length > 0 && selected.length === available.length
                 ? []
                 : selected;

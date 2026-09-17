@@ -273,6 +273,26 @@ class ConfigServiceTest extends TestCase
         $this->assertSame([], $this->configService->getEnabledLanguages());
     }
 
+    public function testGetEnabledSalesChannelsReturnsConfiguredIds(): void
+    {
+        $this->systemConfig
+            ->method('get')
+            ->with('EmporiqaIntegration.config.enabledSalesChannels', null)
+            ->willReturn('["sc-1","","sc-2"]');
+
+        $this->assertSame(['sc-1', 'sc-2'], $this->configService->getEnabledSalesChannels());
+    }
+
+    public function testGetEnabledSalesChannelsReturnsEmptyWhenUnset(): void
+    {
+        $this->systemConfig
+            ->method('get')
+            ->with('EmporiqaIntegration.config.enabledSalesChannels', null)
+            ->willReturn(null);
+
+        $this->assertSame([], $this->configService->getEnabledSalesChannels());
+    }
+
     public function testGetBrandAttributeReturnsConfigured(): void
     {
         $this->systemConfig

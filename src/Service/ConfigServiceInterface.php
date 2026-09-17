@@ -39,6 +39,11 @@ interface ConfigServiceInterface
     public function getEnabledLanguages(?string $salesChannelId = null): array;
 
     /**
+     * @return string[] IDs of the sales channels to sync and show the widget on; empty means all storefront channels
+     */
+    public function getEnabledSalesChannels(?string $salesChannelId = null): array;
+
+    /**
      * @return string[] Technical names of order/transaction states that trigger order.completed
      */
     public function getOrderCompletedStates(?string $salesChannelId = null): array;

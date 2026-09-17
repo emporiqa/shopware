@@ -172,6 +172,29 @@ class SyncControllerTest extends TestCase
         $this->assertArrayNotHasKey('EmporiqaIntegration.config.storeId', $this->configStore);
     }
 
+    public function testSaveSettingsStoresEnabledSalesChannels(): void
+    {
+        $response = $this->controller->saveSettings(
+            $this->jsonRequest(['enabledSalesChannels' => ['sc-1', 'sc-1', '']]),
+            Context::createDefaultContext(),
+        );
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('["sc-1"]', $this->configStore['EmporiqaIntegration.config.enabledSalesChannels']);
+    }
+
+    public function testSaveSettingsRejectsUnknownSalesChannels(): void
+    {
+        $response = $this->controller->saveSettings(
+            $this->jsonRequest(['enabledSalesChannels' => ['sc-1', 'sc-ghost']]),
+            Context::createDefaultContext(),
+        );
+
+        $this->assertSame(400, $response->getStatusCode());
+        $this->assertStringContainsString('sc-ghost', $this->decode($response)['error']);
+        $this->assertArrayNotHasKey('EmporiqaIntegration.config.enabledSalesChannels', $this->configStore);
+    }
+
     public function testSaveSettingsWritesNothingWhenWebhookUrlIsRejected(): void
     {
         $response = $this->controller->saveSettings(

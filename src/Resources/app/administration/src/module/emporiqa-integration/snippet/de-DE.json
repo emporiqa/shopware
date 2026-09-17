@@ -74,7 +74,11 @@
                 "enabledLanguages": "Aktivierte Sprachen",
                 "enabledLanguagesHelp": "Wählen Sie, welche Sprachen in die synchronisierten Daten aufgenommen werden. Alle ausgewählten Sprachen werden in jedem Event gesendet. Auf Storefronts, deren Sprache nicht ausgewählt ist, wird das Chat-Widget ausgeblendet.",
                 "enabledLanguagesRequired": "Wählen Sie mindestens eine Sprache aus.",
-                "enabledLanguagesEmpty": "Keine Storefront-Sprachen gefunden. Legen Sie zuerst eine Domain für einen Storefront-Verkaufskanal an."
+                "enabledLanguagesEmpty": "Keine Storefront-Sprachen gefunden. Legen Sie zuerst eine Domain für einen Storefront-Verkaufskanal an.",
+                "enabledSalesChannels": "Synchronisierte Verkaufskanäle",
+                "enabledSalesChannelsHelp": "Wählen Sie, welche Verkaufskanäle mit Emporiqa synchronisiert werden. Nicht ausgewählte Kanäle werden bei der Produkt- und Seitensynchronisierung ausgelassen und das Chat-Widget wird auf ihren Storefronts nicht angezeigt.",
+                "enabledSalesChannelsRequired": "Wählen Sie mindestens einen Verkaufskanal aus.",
+                "enabledSalesChannelsEmpty": "Keine Storefront-Verkaufskanäle gefunden."
             }
         },
         "sync": {
@@ -124,7 +128,10 @@
             "description": "Diese Befehle sind in der Shopware-CLI verfügbar. Jeder Synchronisierungsbefehl unterstützt auch ein --dry-run-Flag."
         },
         "configLink": {
-            "description": "Verbinden Sie Ihren Shop, wählen Sie die synchronisierten Sprachen und senden Sie Ihren Katalog auf der Emporiqa-Seite an Emporiqa.",
+            "connected": "Mit Emporiqa verbunden (Shop-ID {storeId}).",
+            "manage": "Verwalten Sie die synchronisierten Verkaufskanäle und Sprachen und senden Sie Ihren Katalog auf der Emporiqa-Seite an Emporiqa.",
+            "notConnected": "Noch nicht verbunden.",
+            "description": "Öffnen Sie die Emporiqa-Seite, um Ihren Shop mit einem Klick zu verbinden, die synchronisierten Verkaufskanäle und Sprachen zu wählen und Ihren Katalog zu senden.",
             "button": "Emporiqa-Einstellungen öffnen"
         }
     }
