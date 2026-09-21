@@ -17,7 +17,6 @@ use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsAnyFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\MultiFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\NotFilter;
@@ -395,11 +394,17 @@ class SyncService implements SyncServiceInterface, ResetInterface
 
     private function countShopPages(Context $context): int
     {
+        // A non-root category needs an assigned CMS layout to have any content to
+        // sync - Shopware's system-default-layout fallback is not replicated. Tree
+        // roots are exempt: formatShopPage() always syncs the navigation root (the
+        // home page) even without one, footer/service roots resolve to null there.
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('active', true));
         $criteria->addFilter(new EqualsFilter('type', 'page'));
-        $criteria->addFilter(new EqualsAnyFilter('cmsPage.type', CmsPageFormatterInterface::SHOP_PAGE_LAYOUT_TYPES));
-        $criteria->addFilter(new NotFilter(MultiFilter::CONNECTION_AND, [new EqualsFilter('parentId', null)]));
+        $criteria->addFilter(new MultiFilter(MultiFilter::CONNECTION_OR, [
+            new NotFilter(MultiFilter::CONNECTION_AND, [new EqualsFilter('cmsPageId', null)]),
+            new EqualsFilter('parentId', null),
+        ]));
         $criteria->setLimit(1);
         $criteria->setTotalCountMode(Criteria::TOTAL_COUNT_MODE_EXACT);
 
@@ -563,12 +568,23 @@ class SyncService implements SyncServiceInterface, ResetInterface
 
     private function buildShopPageCriteria(): Criteria
     {
+        // No cmsPage.type restriction: a listing-layout category can carry its own
+        // text or FAQ blocks above/below the product grid, and formatShopPage()
+        // gates on whether it actually has content. A non-root category still
+        // needs an assigned layout (cmsPageId not null) though - without one there
+        // is nothing to render, and a category's plain description field alone
+        // (the fallback formatShopPage() otherwise reaches for) is too common and
+        // often too thin to justify a page on every one of them. Tree roots are
+        // exempt from that requirement: formatShopPage() always syncs the
+        // navigation root (the home page) even without a layout of its own;
+        // footer/service roots resolve to null there regardless.
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('active', true));
         $criteria->addFilter(new EqualsFilter('type', 'page'));
-        $criteria->addFilter(new EqualsAnyFilter('cmsPage.type', CmsPageFormatterInterface::SHOP_PAGE_LAYOUT_TYPES));
-        // Tree roots (navigation, footer, service) are not pages
-        $criteria->addFilter(new NotFilter(MultiFilter::CONNECTION_AND, [new EqualsFilter('parentId', null)]));
+        $criteria->addFilter(new MultiFilter(MultiFilter::CONNECTION_OR, [
+            new NotFilter(MultiFilter::CONNECTION_AND, [new EqualsFilter('cmsPageId', null)]),
+            new EqualsFilter('parentId', null),
+        ]));
         $criteria->addSorting(new FieldSorting('id', FieldSorting::ASCENDING));
         $criteria->addAssociation('cmsPage.sections.blocks.slots.translations');
         $criteria->addAssociation('translations');

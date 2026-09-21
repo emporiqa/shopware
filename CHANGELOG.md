@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.3 (2026-09-21)
+
+### Fixed
+- **Categories are synced as pages regardless of their layout.** Previously only categories with a "Shop page" or "Landing page" layout were considered; a normal category using the product listing layout is now synced too when it carries its own text, such as an SEO description, a guide or an FAQ accordion above or below the product grid. A category that is only a product grid, with no text of its own, is still left out.
+- **The storefront home page is now synced.** It was previously always excluded as a tree root.
+
 ## 1.2.2 (2026-09-17)
 
 ### Added

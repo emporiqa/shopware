@@ -9,9 +9,6 @@ use Shopware\Core\Content\LandingPage\LandingPageEntity;
 
 interface CmsPageFormatterInterface
 {
-    /** CMS layout types of categories that are synced as pages. */
-    public const SHOP_PAGE_LAYOUT_TYPES = ['page', 'landingpage'];
-
     /**
      * Returns null when the landing page is not reachable in any synced sales
      * channel (not assigned to one).
@@ -26,8 +23,14 @@ interface CmsPageFormatterInterface
     ): ?array;
 
     /**
-     * Returns null when the category is not reachable in any synced sales channel
-     * (outside every channel's navigation, footer and service trees) or is a tree root.
+     * Any active category of type "page" is synced, whatever CMS layout it uses
+     * (a listing layout can carry its own text and FAQ blocks above or below the
+     * product grid). Returns null when the category is not reachable in any synced
+     * sales channel (outside every channel's navigation, footer and service trees),
+     * or has no content of its own (a plain product listing) - the exception being
+     * a channel's navigation root, which is the storefront home page and is always
+     * synced when reachable, content or not. Footer and service tree roots are
+     * never pages.
      *
      * @param array<string, array<int, array<string, string>>> $channelContexts
      * @return array<string, mixed>|null

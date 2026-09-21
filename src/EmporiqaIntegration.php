@@ -10,7 +10,7 @@ use Shopware\Core\Framework\Plugin\Context\UninstallContext;
 
 class EmporiqaIntegration extends Plugin
 {
-    public const PLUGIN_VERSION = '1.2.2';
+    public const PLUGIN_VERSION = '1.2.3';
 
     public function uninstall(UninstallContext $uninstallContext): void
     {

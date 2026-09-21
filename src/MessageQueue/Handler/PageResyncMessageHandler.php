@@ -21,8 +21,6 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsAnyFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\MultiFilter;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\NotFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -155,9 +153,21 @@ class PageResyncMessageHandler
     {
         $id = $category->getId();
 
-        // Tree roots (navigation, footer, service) are not pages.
+        // The navigation root is the storefront home page and is always a
+        // candidate, with or without its own CMS layout - formatShopPage() syncs
+        // it either way. Footer/service tree roots are organisational only.
         if ($category->getParentId() === null) {
-            return false;
+            if (!$this->isHomeRoot($category)) {
+                return false;
+            }
+
+            if (!$category->getActive()) {
+                $this->delete($id);
+
+                return false;
+            }
+
+            return true;
         }
 
         if (!$this->isShopPage($category)) {
@@ -219,12 +229,12 @@ class PageResyncMessageHandler
 
         $offset = 0;
         do {
+            // No layout-type or tree-root restriction here either; syncCategory()
+            // (via needsFormatting()/formatShopPage()) decides what actually syncs.
             $criteria = $this->categoryCriteria(new Criteria())->setOffset($offset);
             $criteria->addFilter(new EqualsFilter('active', true));
             $criteria->addFilter(new EqualsFilter('type', 'page'));
             $criteria->addFilter(new EqualsAnyFilter('cmsPageId', $cmsPageIds));
-            $criteria->addFilter(new EqualsAnyFilter('cmsPage.type', CmsPageFormatterInterface::SHOP_PAGE_LAYOUT_TYPES));
-            $criteria->addFilter(new NotFilter(MultiFilter::CONNECTION_AND, [new EqualsFilter('parentId', null)]));
             $categories = $this->loadCategories($criteria, $context);
 
             foreach ($categories as $category) {
@@ -268,13 +278,32 @@ class PageResyncMessageHandler
         }
     }
 
+    /**
+     * Whether a category can be a page at all: it needs an assigned CMS layout to
+     * render (Shopware's default-layout fallback is not replicated here). Whether
+     * it actually carries content worth syncing is decided by formatShopPage().
+     */
     private function isShopPage(CategoryEntity $category): bool
     {
-        $cmsPage = $category->getCmsPage();
+        return $category->getType() === 'page' && $category->getCmsPage() !== null;
+    }
 
-        return $category->getType() === 'page'
-            && $cmsPage !== null
-            && \in_array($cmsPage->getType(), CmsPageFormatterInterface::SHOP_PAGE_LAYOUT_TYPES, true);
+    /**
+     * Whether this category is a channel's navigation root, i.e. the storefront
+     * home page. Unlike CmsPageFormatter::isCategoryInChannel(), a context missing
+     * navigationCategoryId entirely is not treated as a match.
+     */
+    private function isHomeRoot(CategoryEntity $category): bool
+    {
+        foreach ($this->channelContexts as $ctxList) {
+            foreach ($ctxList as $ctx) {
+                if (($ctx['navigationCategoryId'] ?? null) === $category->getId()) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

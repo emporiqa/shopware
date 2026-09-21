@@ -13,6 +13,17 @@ class CmsPageFormatter implements CmsPageFormatterInterface
 {
     use TranslationResolverTrait;
 
+    /**
+     * Minimum stripped content length (chars) for a non-root category to count as
+     * having its own content. Shopware's default listing layout - and, via the
+     * "core.cms.default_category_cms_page" system default, effectively any category
+     * with no layout of its own too - renders a heading that just repeats the
+     * category name (e.g. "<h1>Smartphones</h1>"); a bare length check filters that
+     * out without needing to special-case it, while still passing a real sentence
+     * or more of editorial text.
+     */
+    private const MIN_CONTENT_LENGTH = 80;
+
     public function __construct(
         private readonly ?CmsContentResolverInterface $contentResolver = null,
     ) {
@@ -77,17 +88,18 @@ class CmsPageFormatter implements CmsPageFormatterInterface
         array $channelContexts,
         ?string $syncSessionId = null,
     ): ?array {
-        // Tree roots (navigation, footer, service) are not pages.
-        if ($category->getParentId() === null) {
-            return null;
-        }
+        // A tree root is only a page when it is a channel's navigation root, i.e.
+        // the storefront home page; footer/service roots are organisational only.
+        $isHome = $category->getParentId() === null;
 
-        $targets = $this->resolveTargets(
-            $channelContexts,
-            $category->getSeoUrls(),
-            static fn (array $ctx): bool => self::isCategoryInChannel($category, $ctx),
-            '/navigation/' . $category->getId(),
-        );
+        $targets = $isHome
+            ? $this->resolveHomeTargets($channelContexts, $category->getId())
+            : $this->resolveTargets(
+                $channelContexts,
+                $category->getSeoUrls(),
+                static fn (array $ctx): bool => self::isCategoryInChannel($category, $ctx),
+                '/navigation/' . $category->getId(),
+            );
 
         $titles = [];
         $contents = [];
@@ -114,6 +126,16 @@ class CmsPageFormatter implements CmsPageFormatterInterface
 
             $contents[$channelKey][$langCode] = $content;
             $links[$channelKey][$langCode] = $link;
+        }
+
+        // A category whose layout is a plain product listing with no text or FAQ
+        // blocks of its own resolves to no substantial content anywhere - a bare
+        // heading repeating the category name does not count, see
+        // MIN_CONTENT_LENGTH; syncing it would only add a title and a link. The
+        // home page is exempt: there is at most one per channel, so it carries no
+        // bloat risk, and it is worth syncing even when its layout has little text.
+        if (!$isHome && !$this->hasSubstantialContent($contents)) {
+            return null;
         }
 
         return $this->buildPayload('page-' . $category->getId(), $titles, $contents, $links, $syncSessionId);
@@ -204,6 +226,53 @@ class CmsPageFormatter implements CmsPageFormatterInterface
     }
 
     /**
+     * The home page has no SEO or technical route of its own; it is the sales
+     * channel's domain root. One target per channel/language whose navigation
+     * root is this category - unlike isCategoryInChannel(), a context missing
+     * navigationCategoryId entirely does not count as a match, there being no
+     * single category id it could safely be assumed to mean.
+     *
+     * @param array<string, array<int, array<string, string>>> $channelContexts
+     * @return list<array{channelKey: string, context: array<string, string>, link: string}>
+     */
+    private function resolveHomeTargets(array $channelContexts, string $categoryId): array
+    {
+        $targets = [];
+        foreach ($channelContexts as $channelKey => $ctxList) {
+            foreach ($ctxList as $ctx) {
+                if (($ctx['navigationCategoryId'] ?? null) !== $categoryId) {
+                    continue;
+                }
+
+                $targetKey = $channelKey . '|' . $ctx['languageCode'];
+                $targets[$targetKey] ??= [
+                    'channelKey' => (string) $channelKey,
+                    'context' => $ctx,
+                    'link' => rtrim($ctx['domainUrl'], '/') . '/',
+                ];
+            }
+        }
+
+        return array_values($targets);
+    }
+
+    /**
+     * @param array<string, array<string, string>> $contents
+     */
+    private function hasSubstantialContent(array $contents): bool
+    {
+        foreach ($contents as $byLanguage) {
+            foreach ($byLanguage as $content) {
+                if (mb_strlen(trim(strip_tags((string) $content))) >= self::MIN_CONTENT_LENGTH) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * A category is a page of a sales channel when it sits in the channel's
      * navigation, footer or service tree. Contexts without tree information
      * (e.g. altered by a PreSyncEvent listener) count the category as reachable.
@@ -272,7 +341,7 @@ class CmsPageFormatter implements CmsPageFormatterInterface
                     // category content typed per language actually lives.
                     if ($slotConfigOverride !== []) {
                         $override = $slotConfigOverride[$slot->getId()] ?? null;
-                        if (\is_array($override) && isset($override['content']['value']) && \is_string($override['content']['value'])) {
+                        if (\is_array($override) && !self::isMappedConfig($override) && isset($override['content']['value']) && \is_string($override['content']['value'])) {
                             $content = $override['content']['value'];
                         }
                     }
@@ -285,7 +354,7 @@ class CmsPageFormatter implements CmsPageFormatterInterface
                     // Fall back to default config
                     if ($content === '') {
                         $config = $slot->getConfig();
-                        if (\is_array($config) && isset($config['content']['value']) && \is_string($config['content']['value'])) {
+                        if (\is_array($config) && !self::isMappedConfig($config) && isset($config['content']['value']) && \is_string($config['content']['value'])) {
                             $content = $config['content']['value'];
                         }
                     }
@@ -334,11 +403,24 @@ class CmsPageFormatter implements CmsPageFormatterInterface
         }
 
         $config = $translation->getConfig();
-        if (\is_array($config) && isset($config['content']['value']) && \is_string($config['content']['value'])) {
+        if (\is_array($config) && !self::isMappedConfig($config) && isset($config['content']['value']) && \is_string($config['content']['value'])) {
             return $config['content']['value'];
         }
 
         return '';
+    }
+
+    /**
+     * A "mapped" content source stores a field reference (e.g. "category.description")
+     * as its value, resolved to the real field value only when rendered through
+     * Shopware's storefront CMS loader - reading it raw here would sync the
+     * reference string itself as if it were page text.
+     *
+     * @param array<string, mixed> $config
+     */
+    private static function isMappedConfig(array $config): bool
+    {
+        return ($config['content']['source'] ?? null) === 'mapped';
     }
 
     /**

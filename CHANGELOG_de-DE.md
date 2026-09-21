@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.3 (2026-09-21)
+
+### Behoben
+- **Kategorien werden unabhängig von ihrem Layout als Seiten synchronisiert.** Zuvor wurden nur Kategorien mit dem Layout „Shop-Seite“ oder „Erlebniswelt“ berücksichtigt; eine normale Kategorie mit Produktlisten-Layout wird jetzt ebenfalls synchronisiert, wenn sie eigenen Text enthält, etwa eine SEO-Beschreibung, einen Ratgeber oder ein FAQ-Akkordeon ober- oder unterhalb der Produktübersicht. Eine Kategorie, die nur eine Produktübersicht ohne eigenen Text ist, bleibt weiterhin ausgelassen.
+- **Die Startseite der Storefront wird jetzt synchronisiert.** Sie wurde zuvor als Wurzelkategorie immer ausgeschlossen.
+
 ## 1.2.2 (2026-09-17)
 
 ### Hinzugefügt

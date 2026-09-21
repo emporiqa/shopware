@@ -127,7 +127,9 @@ class PageResyncMessageHandlerTest extends TestCase
 
     public function testCategoryThatIsNoLongerAShopPageIsDeletedOnlyOnStructuralChange(): void
     {
-        $this->mockCategories([$this->category('cat-listing', layoutType: 'product_list'), $this->category('cat-touched', layoutType: 'product_list')]);
+        // No CMS layout assigned at all: there is nothing to render or gate on content,
+        // so this can never be a page regardless of what its content might otherwise be.
+        $this->mockCategories([$this->category('cat-listing', layoutType: null), $this->category('cat-touched', layoutType: null)]);
         $this->cmsPageFormatter->expects($this->never())->method('formatShopPage');
 
         ($this->handler)(new PageResyncMessage(categoryIds: ['cat-listing', 'cat-touched'], structuralCategoryIds: ['cat-touched']));
@@ -135,9 +137,9 @@ class PageResyncMessageHandlerTest extends TestCase
         $this->assertSame([['type' => 'page.deleted', 'data' => ['identification_number' => 'page-cat-touched']]], $this->dispatchedEvents);
     }
 
-    public function testListingCategoriesAreNotLoadedWithTheirLayout(): void
+    public function testCategoriesWithoutALayoutAreNotLoadedWithTheirLayout(): void
     {
-        $listing = $this->category('cat-listing', layoutType: 'product_list');
+        $listing = $this->category('cat-listing', layoutType: null);
         $shopPage = $this->category('cat-page', layoutType: 'page');
 
         $calls = [];
@@ -186,6 +188,62 @@ class PageResyncMessageHandlerTest extends TestCase
         ($this->handler)(new PageResyncMessage(categoryIds: ['root'], structuralCategoryIds: ['root']));
 
         $this->assertSame([], $this->dispatchedEvents);
+    }
+
+    public function testNavigationRootCategoryIsSyncedAsHomePage(): void
+    {
+        $this->syncService = $this->createMock(SyncServiceInterface::class);
+        $this->syncService->method('buildChannelContexts')->willReturn([
+            '' => [['languageCode' => 'en', 'domainUrl' => 'https://shop.example.com', 'currencyIso' => 'EUR', 'currencyId' => 'curr-eur', 'salesChannelId' => 'sc-1', 'languageId' => 'lang-en', 'navigationCategoryId' => 'root']],
+        ]);
+        $this->handler = new PageResyncMessageHandler(
+            $this->config,
+            $this->syncService,
+            $this->cmsPageFormatter,
+            $this->landingPageRepository,
+            $this->categoryRepository,
+            $this->messageBus,
+            $this->eventDispatcher,
+            $this->createMock(LoggerInterface::class),
+        );
+
+        $root = $this->category('root', layoutType: 'page', parentId: null);
+        $this->mockCategories([$root]);
+        $this->cmsPageFormatter->method('formatShopPage')->willReturn(['identification_number' => 'page-root']);
+
+        ($this->handler)(new PageResyncMessage(categoryIds: ['root']));
+
+        $this->assertSame([['type' => 'page.updated', 'data' => ['identification_number' => 'page-root']]], $this->dispatchedEvents);
+    }
+
+    public function testNavigationRootWithoutALayoutIsStillSyncedAsHomePage(): void
+    {
+        // Shopware backfills a category's cms_page_id from the system default on
+        // write, but only while that default is configured and still exists - a
+        // root can legitimately have none. isShopPage()'s cmsPage requirement,
+        // which excludes a non-root category with no layout, must not apply to it.
+        $this->syncService = $this->createMock(SyncServiceInterface::class);
+        $this->syncService->method('buildChannelContexts')->willReturn([
+            '' => [['languageCode' => 'en', 'domainUrl' => 'https://shop.example.com', 'currencyIso' => 'EUR', 'currencyId' => 'curr-eur', 'salesChannelId' => 'sc-1', 'languageId' => 'lang-en', 'navigationCategoryId' => 'root']],
+        ]);
+        $this->handler = new PageResyncMessageHandler(
+            $this->config,
+            $this->syncService,
+            $this->cmsPageFormatter,
+            $this->landingPageRepository,
+            $this->categoryRepository,
+            $this->messageBus,
+            $this->eventDispatcher,
+            $this->createMock(LoggerInterface::class),
+        );
+
+        $root = $this->category('root', layoutType: null, parentId: null);
+        $this->mockCategories([$root]);
+        $this->cmsPageFormatter->method('formatShopPage')->willReturn(['identification_number' => 'page-root']);
+
+        ($this->handler)(new PageResyncMessage(categoryIds: ['root']));
+
+        $this->assertSame([['type' => 'page.updated', 'data' => ['identification_number' => 'page-root']]], $this->dispatchedEvents);
     }
 
     public function testLayoutResyncUpdatesEveryPageUsingTheLayouts(): void
@@ -272,18 +330,25 @@ class PageResyncMessageHandlerTest extends TestCase
         return $page;
     }
 
-    private function category(string $id, string $layoutType, bool $active = true): CategoryEntity
+    /**
+     * @param ?string $layoutType null means no CMS layout assigned at all (the only
+     *                            remaining cheap-skip case: any assigned layout, listing
+     *                            included, may carry its own content and is formatted).
+     */
+    private function category(string $id, ?string $layoutType = 'page', bool $active = true, ?string $parentId = 'parent-1'): CategoryEntity
     {
-        $cmsPage = new CmsPageEntity();
-        $cmsPage->setId('layout-' . $id);
-        $cmsPage->setType($layoutType);
-
         $category = new CategoryEntity();
         $category->setId($id);
         $category->setType('page');
-        $category->setParentId('parent-1');
+        $category->setParentId($parentId);
         $category->setActive($active);
-        $category->setCmsPage($cmsPage);
+
+        if ($layoutType !== null) {
+            $cmsPage = new CmsPageEntity();
+            $cmsPage->setId('layout-' . $id);
+            $cmsPage->setType($layoutType);
+            $category->setCmsPage($cmsPage);
+        }
 
         return $category;
     }

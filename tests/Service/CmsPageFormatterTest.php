@@ -380,10 +380,11 @@ class CmsPageFormatterTest extends TestCase
     public function testFormatShopPageUsesStorefrontResolvedContent(): void
     {
         $resolver = $this->createMock(CmsContentResolverInterface::class);
+        $resolvedContent = 'Resolved category content, long enough on its own to clear the minimum content length threshold.';
         $resolver->expects($this->once())
             ->method('resolveCategoryContent')
             ->with('cat-faq', 'sc-1', 'lang-en', 'curr-eur')
-            ->willReturn('Resolved category content');
+            ->willReturn($resolvedContent);
 
         $category = $this->createMock(CategoryEntity::class);
         $category->method('getId')->willReturn('cat-faq');
@@ -397,8 +398,32 @@ class CmsPageFormatterTest extends TestCase
 
         $result = (new CmsPageFormatter($resolver))->formatShopPage($category, $this->defaultChannelContexts);
 
-        $this->assertSame('Resolved category content', $result['contents']['']['en']);
+        $this->assertSame($resolvedContent, $result['contents']['']['en']);
         $this->assertSame('https://shop.example.com/faq', $result['links']['']['en']);
+    }
+
+    public function testFormatShopPageReturnsNullForABareTitleHeading(): void
+    {
+        // Shopware's default listing layout (and, via the system default-layout
+        // fallback, effectively any category with no layout of its own) renders a
+        // heading that just repeats the category name, e.g. "<h1>Smartphones</h1>".
+        // That alone must not count as the category's own content.
+        $resolver = $this->createMock(CmsContentResolverInterface::class);
+        $resolver->method('resolveCategoryContent')->willReturn('<h1>Smartphones</h1>');
+
+        $category = $this->createMock(CategoryEntity::class);
+        $category->method('getId')->willReturn('cat-heading-only');
+        $category->method('getParentId')->willReturn('parent-1');
+        $category->method('getPath')->willReturn('|root-nav|parent-1|');
+        $category->method('getSeoUrls')->willReturn(new SeoUrlCollection([$this->createSeoUrl('sc-1', 'lang-en', 'smartphones')]));
+        $category->method('getCmsPage')->willReturn(null);
+        $category->method('getTranslations')->willReturn(null);
+        $category->method('getTranslation')->willReturnCallback(fn(string $field) => $field === 'name' ? 'Smartphones' : null);
+        $category->method('getName')->willReturn('Smartphones');
+
+        $result = (new CmsPageFormatter($resolver))->formatShopPage($category, $this->defaultChannelContexts);
+
+        $this->assertNull($result);
     }
 
     public function testFormatShopPageUsesTechnicalRouteWhenInTreeWithoutSeoUrl(): void
@@ -419,12 +444,111 @@ class CmsPageFormatterTest extends TestCase
         $this->assertNull($this->formatter->formatShopPage($category, $this->treeChannelContexts()));
     }
 
-    public function testFormatShopPageReturnsNullForTreeRoots(): void
+    public function testFormatShopPageSyncsNavigationRootAsHomePage(): void
     {
+        // treeChannelContexts()'s navigationCategoryId is 'root-nav', matching this
+        // category's id: it is the channel's home page, not a plain tree root.
         $category = $this->createCategoryMock('root-nav', path: null, parentId: null);
         $category->method('getSeoUrls')->willReturn(new SeoUrlCollection([]));
 
+        $result = $this->formatter->formatShopPage($category, $this->treeChannelContexts());
+
+        $this->assertNotNull($result);
+        $this->assertSame('page-root-nav', $result['identification_number']);
+        // The home page has no SEO/technical route of its own: the link is the domain root.
+        $this->assertSame('https://shop.example.com/', $result['links']['']['en']);
+    }
+
+    public function testFormatShopPageSyncsHomePageEvenWithoutContent(): void
+    {
+        // Unlike a regular category, the home page is exempt from the content gate:
+        // it is a single entry per channel, not a source of bloat.
+        $category = $this->createMock(CategoryEntity::class);
+        $category->method('getId')->willReturn('root-nav');
+        $category->method('getParentId')->willReturn(null);
+        $category->method('getPath')->willReturn(null);
+        $category->method('getSeoUrls')->willReturn(new SeoUrlCollection([]));
+        $category->method('getCmsPage')->willReturn(null);
+        $category->method('getTranslations')->willReturn(null);
+        $category->method('getTranslation')->willReturnCallback(fn(string $field) => $field === 'name' ? 'Home' : null);
+        $category->method('getName')->willReturn('Home');
+
+        $result = $this->formatter->formatShopPage($category, $this->treeChannelContexts());
+
+        $this->assertNotNull($result);
+        $this->assertSame('', $result['contents']['']['en']);
+    }
+
+    public function testFormatShopPageReturnsNullForFooterAndServiceRoots(): void
+    {
+        // Only a channel's navigation root is a page; other tree roots stay excluded,
+        // whether or not they happen to carry their own content.
+        $category = $this->createCategoryMock('root-footer', path: null, parentId: null);
+        $category->method('getSeoUrls')->willReturn(new SeoUrlCollection([]));
+
         $this->assertNull($this->formatter->formatShopPage($category, $this->treeChannelContexts()));
+    }
+
+    public function testFormatShopPageReturnsNullForCategoryWithoutOwnContent(): void
+    {
+        // A category whose layout is a plain product listing (no text, no FAQ block)
+        // resolves to no content anywhere; syncing it would only add link-only noise.
+        $category = $this->createMock(CategoryEntity::class);
+        $category->method('getId')->willReturn('cat-listing');
+        $category->method('getParentId')->willReturn('parent-1');
+        $category->method('getPath')->willReturn('|root-nav|parent-1|');
+        $category->method('getSeoUrls')->willReturn(new SeoUrlCollection([$this->createSeoUrl('sc-1', 'lang-en', 'listing')]));
+        $category->method('getCmsPage')->willReturn(null);
+        $category->method('getTranslations')->willReturn(null);
+        $category->method('getTranslation')->willReturnCallback(fn(string $field) => $field === 'name' ? 'Listing' : null);
+        $category->method('getName')->willReturn('Listing');
+
+        $this->assertNull($this->formatter->formatShopPage($category, $this->treeChannelContexts()));
+    }
+
+    public function testFormatShopPageDoesNotSyncTheLiteralMappedFieldReference(): void
+    {
+        // A slot mapped to a category field (e.g. "category.description") stores
+        // {"content":{"value":"category.description","source":"mapped"}} in its raw
+        // config - that value is a field reference, resolved to the real field only
+        // when rendered through Shopware's storefront CMS loader. Reading it as if it
+        // were literal text would sync the reference string itself. The category's
+        // own (real) description must be used instead, via the next fallback.
+        $slot = $this->createMock(CmsSlotEntity::class);
+        $slot->method('getId')->willReturn('slot-1');
+        $slot->method('getType')->willReturn('text');
+        $slot->method('getConfig')->willReturn(['content' => ['value' => 'category.description', 'source' => 'mapped']]);
+        $slot->method('getData')->willReturn(null);
+        $slot->method('getTranslations')->willReturn(null);
+
+        $block = $this->createMock(CmsBlockEntity::class);
+        $block->method('getSlots')->willReturn(new CmsSlotCollection([$slot]));
+
+        $section = $this->createMock(CmsSectionEntity::class);
+        $section->method('getBlocks')->willReturn(new CmsBlockCollection([$block]));
+
+        $cmsPage = $this->createMock(CmsPageEntity::class);
+        $cmsPage->method('getSections')->willReturn(new CmsSectionCollection([$section]));
+
+        $category = $this->createMock(CategoryEntity::class);
+        $category->method('getId')->willReturn('cat-mapped');
+        $category->method('getParentId')->willReturn('parent-1');
+        $category->method('getPath')->willReturn('|root-nav|parent-1|');
+        $category->method('getSeoUrls')->willReturn(new SeoUrlCollection([$this->createSeoUrl('sc-1', 'lang-en', 'mapped')]));
+        $category->method('getCmsPage')->willReturn($cmsPage);
+        $category->method('getTranslations')->willReturn(null);
+        $realDescription = 'Real category description, long enough to clear the minimum content length threshold.';
+        $category->method('getTranslation')->willReturnCallback(fn(string $field) => match ($field) {
+            'name' => 'Mapped',
+            'description' => $realDescription,
+            default => null,
+        });
+        $category->method('getName')->willReturn('Mapped');
+
+        $result = $this->formatter->formatShopPage($category, $this->treeChannelContexts());
+
+        $this->assertNotNull($result);
+        $this->assertSame($realDescription, $result['contents']['']['en']);
     }
 
     public function testFormatShopPageIncludesFooterAndServiceTrees(): void
@@ -467,6 +591,7 @@ class CmsPageFormatterTest extends TestCase
         $category->method('getTranslation')->willReturnCallback(fn(string $field) => match ($field) {
             'name' => 'Internal Category Name',
             'metaTitle' => 'SEO Category Title',
+            'description' => 'Some category description text, long enough to clear the minimum content length.',
             default => null,
         });
         $category->method('getName')->willReturn('Internal Category Name');
@@ -524,7 +649,11 @@ class CmsPageFormatterTest extends TestCase
         $category->method('getPath')->willReturn($path);
         $category->method('getCmsPage')->willReturn(null);
         $category->method('getTranslations')->willReturn(null);
-        $category->method('getTranslation')->willReturnCallback(fn(string $field) => $field === 'name' ? 'Category ' . $id : null);
+        $category->method('getTranslation')->willReturnCallback(fn(string $field) => match ($field) {
+            'name' => 'Category ' . $id,
+            'description' => 'Description of category ' . $id . ', long enough to clear the minimum content length.',
+            default => null,
+        });
         $category->method('getName')->willReturn('Category ' . $id);
 
         return $category;
