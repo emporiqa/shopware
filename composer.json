@@ -1,6 +1,6 @@
 {
     "name": "emporiqa/shopware-plugin",
-    "description": "Integrates your Shopware store with the Emporiqa chat assistant.",
+    "description": "Integrates your Shopware store with Emporiqa, an AI chatbot that works as an online salesperson on your storefront.",
     "version": "1.2.3",
     "type": "shopware-platform-plugin",
     "license": "MIT",
@@ -42,8 +42,8 @@
         },
         "copyright": "Copyright (c) Emporiqa",
         "description": {
-            "en-GB": "Integrates your Shopware store with the Emporiqa chat assistant. Sync products and pages, embed the chat widget, and enable in-chat cart and checkout operations.",
-            "de-DE": "Verbindet Ihren Shopware-Shop mit dem Emporiqa Chat-Assistenten. Synchronisiert Produkte und Seiten, bettet das Chat-Widget ein und ermöglicht Warenkorbaktionen im Chat."
+            "en-GB": "Integrates your Shopware store with Emporiqa, an AI chatbot that works as an online salesperson on your storefront. Sync products and pages, embed the chat widget, and enable in-chat cart and checkout operations.",
+            "de-DE": "Verbindet Ihren Shopware-Shop mit Emporiqa, einem KI-Chatbot, der als Online-Verkäufer in Ihrem Shop arbeitet. Synchronisiert Produkte und Seiten, bettet das Chat-Widget ein und ermöglicht Warenkorbaktionen im Chat."
         },
         "manufacturerLink": {
             "en-GB": "https://emporiqa.com",

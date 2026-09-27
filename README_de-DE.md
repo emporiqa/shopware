@@ -4,12 +4,12 @@
 
 Der KI-Chatbot [Emporiqa](https://emporiqa.com) für Shopware 6 ist ein Online-Verkäufer, der in Ihrem Shop für Sie verkauft: Käufer beschreiben, was sie brauchen, oder laden ein Foto von etwas hoch, das ihnen gefällt, er findet passende Produkte aus Ihrem Katalog, behandelt Einwände wie „zu teuer“ mit Alternativen statt mit einem Rabatt, beantwortet Fragen anhand Ihrer CMS-Seiten und führt Käufer in 65+ Sprachen zum Warenkorb und zur Kasse. Dieses Plugin synchronisiert Ihren Produktkatalog und Ihre CMS-Seiten mit Emporiqa, bindet das Chat-Widget in Ihre Storefront ein und stellt Endpunkte für Warenkorb-Aktionen im Chat und für die Bestellverfolgung bereit.
 
-[![Geöffnetes Emporiqa-Chat-Widget in einer deutschsprachigen Storefront. Auf die Frage, welches Notebook unter 1200 Euro sich für eine Studentin eignet, die Videos schneidet, nennt es das MacBook Air 13 ab 1.199,00 Euro, begründet die Wahl mit M3-Chip, Display und lüfterlosem Gehäuse, nennt die passende Variante und bietet an, das Gerät in den Warenkorb zu legen](docs/images/07-storefront-de.webp)](https://demo.emporiqa.com)
+[![Geöffnetes Emporiqa-Chat-Widget in einer Storefront. Auf die Frage „Welche Kopfhörer mit Geräuschunterdrückung haben Sie für lange Flüge, unter 400 Euro?“ nennt es den Sennheiser Momentum 4 mit bis zu 60 Stunden Akkulaufzeit mit ANC, den Sony WH-1000XM5 mit 30 Stunden und den Beats Studio Pro mit 24 Stunden und zeigt Sennheiser und Sony als Produktkarten mit Foto, Preis und Warenkorb-Button, darunter ein Eingabefeld mit Foto- und Sprach-Button](docs/images/lead-answer-de.webp)](https://demo.emporiqa.com)
 
 - **Integration im Überblick**: [emporiqa.com/de/integrations/shopware/](https://emporiqa.com/de/integrations/shopware/)
 - **Vollständige Dokumentation**: [emporiqa.com/de/docs/shopware/](https://emporiqa.com/de/docs/shopware/) (Referenz des Webhook-Formats, Referenz zu CLI und Admin-API, Beispiele zu Events, Fehlersuche)
 - **Funktionen**: [emporiqa.com/de/features/](https://emporiqa.com/de/features/) · **FAQ**: [emporiqa.com/de/faq/](https://emporiqa.com/de/faq/) · **Preise**: [emporiqa.com/de/pricing/](https://emporiqa.com/de/pricing/)
-- **Live-Demo**: [demo.emporiqa.com](https://demo.emporiqa.com) und ein [30-Sekunden-Video](https://www.youtube.com/watch?v=7oREWt4mPB8). Diese Demo verkauft Elektronik, und das Verhalten ist bei jedem Katalog dasselbe.
+- **Live-Demo**: [demo.emporiqa.com](https://demo.emporiqa.com) und ein [30-Sekunden-Video](https://www.youtube.com/watch?v=qck3AqYSFQw). Diese Demo verkauft Elektronik, und das Verhalten ist bei jedem Katalog dasselbe.
 
 ## Voraussetzungen
 
@@ -160,7 +160,7 @@ Jeder Service ist gegen ein Interface definiert (`ProductFormatterInterface`, `C
 
 ## Preise
 
-Das Plugin ist kostenfrei. Emporiqa selbst rechnet nutzungsbasiert ab: 0 $/Monat Grundgebühr plus 0,25 $ pro Konversation, mit 25 $ Startguthaben und ohne Karte bei der Anmeldung. Alle Preisangaben unter [emporiqa.com/de/pricing/](https://emporiqa.com/de/pricing/).
+Das Plugin ist kostenfrei. Emporiqa selbst rechnet nutzungsbasiert ab: 0 $/Monat Grundgebühr plus 0,25 $ pro Konversation, mit 25 $ Startguthaben (rund 100 Konversationen) und ohne Karte bei der Anmeldung. Ist das Startguthaben aufgebraucht, gilt eine monatliche Kostenobergrenze von standardmäßig 59 $, die Sie im Abrechnungsbereich selbst ändern können. Der Sprachmodus (sprechen statt tippen: der Kunde spricht und bekommt die Antwort vorgelesen) ist optional und standardmäßig ausgeschaltet. Spricht der Kunde, kommen einmalig 0,25 $ für dieses Gespräch hinzu, die auf die Obergrenze angerechnet werden. Für Kataloge über 100.000 Produkte gibt es ein Enterprise-Angebot. Alle Preisangaben unter [emporiqa.com/de/pricing/](https://emporiqa.com/de/pricing/).
 
 ## Support
 
