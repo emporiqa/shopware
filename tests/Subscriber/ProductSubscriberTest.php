@@ -22,6 +22,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityDeletedEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityDeleteEvent;
+use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenContainerEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
 use Shopware\Core\Framework\Uuid\Uuid;
@@ -81,6 +82,7 @@ class ProductSubscriberTest extends TestCase
         $this->assertSame('onProductAssociationWritten', $events['product_price.written']);
         $this->assertSame('onProductAssociationDeleted', $events['product_price.deleted']);
         $this->assertSame('onStockAltered', $events[ProductStockAlteredEvent::class]);
+        $this->assertSame('onWriteFinished', $events[EntityWrittenContainerEvent::class]);
     }
 
     public function testOnProductWrittenSkipsWhenNotConfigured(): void
@@ -587,6 +589,50 @@ class ProductSubscriberTest extends TestCase
             ->willReturn(new Envelope(new \stdClass()));
 
         $this->subscriber->onProductAssociationWritten($event);
+    }
+
+    private function createAssociationWrittenEvent(string $productId): EntityWrittenEvent&MockObject
+    {
+        $writeResult = $this->createMock(EntityWriteResult::class);
+        $writeResult->method('getPayload')->willReturn(['productId' => $productId, 'ruleId' => Uuid::randomHex()]);
+
+        $event = $this->createMock(EntityWrittenEvent::class);
+        $event->method('getContext')->willReturn($this->createLiveContext());
+        $event->method('getWriteResults')->willReturn([$writeResult]);
+
+        return $event;
+    }
+
+    public function testEntityEventsOfOneWriteQueueTheProductOnce(): void
+    {
+        $this->configureEnabled();
+        $productId = Uuid::randomHex();
+        $this->mockLoadedProduct(active: true);
+        $this->productFormatter->method('formatProduct')->willReturn([['identification_number' => 'product-' . $productId]]);
+
+        $this->messageBus->expects($this->once())->method('dispatch')->willReturn(new Envelope(new \stdClass()));
+
+        $this->subscriber->onProductAssociationWritten($this->createAssociationWrittenEvent($productId));
+        $this->subscriber->onProductAssociationWritten($this->createAssociationWrittenEvent($productId));
+    }
+
+    /**
+     * An import that writes a product and then its prices in two DAL writes
+     * of the same request must send the product again with the new prices,
+     * not keep the payload built after the first write.
+     */
+    public function testLaterWriteToTheSameProductIsSentAgain(): void
+    {
+        $this->configureEnabled();
+        $productId = Uuid::randomHex();
+        $this->mockLoadedProduct(active: true);
+        $this->productFormatter->method('formatProduct')->willReturn([['identification_number' => 'product-' . $productId]]);
+
+        $this->messageBus->expects($this->exactly(2))->method('dispatch')->willReturn(new Envelope(new \stdClass()));
+
+        $this->subscriber->onProductAssociationWritten($this->createAssociationWrittenEvent($productId));
+        $this->subscriber->onWriteFinished($this->createMock(EntityWrittenContainerEvent::class));
+        $this->subscriber->onProductAssociationWritten($this->createAssociationWrittenEvent($productId));
     }
 
     public function testProductPriceDeletedQueuesUpdateForCapturedProductId(): void

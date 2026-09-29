@@ -23,6 +23,7 @@ use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityCollection;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\Pricing\CashRoundingConfig;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
 use Shopware\Core\Framework\Uuid\Uuid;
@@ -494,6 +495,15 @@ class SyncServiceTest extends TestCase
         $this->assertSame([], $this->service->buildChannelContexts());
     }
 
+    public function testBuildChannelContextsCarriesCurrencyFactorAndRoundingAsStrings(): void
+    {
+        $context = $this->service->buildChannelContexts()[''][0];
+
+        $this->assertSame('1.17085', $context['currencyFactor']);
+        $this->assertSame('2', $context['currencyDecimals']);
+        $this->assertSame('0.05', $context['currencyInterval']);
+    }
+
     private function createServiceWithBatchSize(int $batchSize): SyncService
     {
         $config = $this->createMock(ConfigServiceInterface::class);
@@ -591,7 +601,8 @@ class SyncServiceTest extends TestCase
         $currency = new CurrencyEntity();
         $currency->setId(Uuid::randomHex());
         $currency->setIsoCode('EUR');
-        $currency->setFactor(1.0);
+        $currency->setFactor(1.17085);
+        $currency->setItemRounding(new CashRoundingConfig(2, 0.05, true));
 
         $domains = [];
         foreach (['en-GB' => 'https://shop.example.com', 'de-DE' => 'https://shop.example.com/de'] as $code => $url) {

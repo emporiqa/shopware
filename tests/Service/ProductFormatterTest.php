@@ -16,6 +16,7 @@ use Shopware\Core\Content\Product\Aggregate\ProductPrice\ProductPriceCollection;
 use Shopware\Core\Content\Product\Aggregate\ProductPrice\ProductPriceEntity;
 use Shopware\Core\Content\Product\ProductCollection;
 use Shopware\Core\Content\Product\ProductEntity;
+use Shopware\Core\Defaults;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityCollection;
 use Shopware\Core\Framework\DataAbstractionLayer\Pricing\Price;
 use Shopware\Core\Framework\DataAbstractionLayer\Pricing\PriceCollection;
@@ -970,6 +971,116 @@ class ProductFormatterTest extends TestCase
         $this->assertArrayNotHasKey('price_excl_tax', $priceEntry);
     }
 
+    /**
+     * A product priced only in the default currency is shown in other
+     * currencies converted by the currency factor, like the storefront does.
+     */
+    public function testDefaultCurrencyFallbackIsConvertedWithCurrencyFactor(): void
+    {
+        $contexts = ['' => [['languageCode' => 'en', 'domainUrl' => 'https://shop.example.com', 'currencyIso' => 'USD', 'currencyId' => 'curr-usd', 'currencyFactor' => '1.17085', 'currencyDecimals' => '2', 'currencyInterval' => '0.01', 'salesChannelId' => 'sc-1', 'languageId' => 'lang-en']]];
+        $tierRows = new ProductPriceCollection([
+            $this->createTierRow('public-5', 5, 4999.00, 4200.84, currencyId: Defaults::CURRENCY),
+        ]);
+        $product = $this->createSimpleProduct(
+            'prod-usd',
+            'USD fallback',
+            'SKU-USD',
+            grossPrice: 5496.00,
+            netPrice: 4618.49,
+            tierPrices: $tierRows,
+            priceCurrencyId: Defaults::CURRENCY,
+            listPrice: new Price(Defaults::CURRENCY, 5041.18, 5999.00, false),
+        );
+
+        $result = $this->formatter->formatProduct($product, $contexts);
+
+        $priceEntry = $result[0]['prices'][''][0];
+        $this->assertSame('USD', $priceEntry['currency']);
+        $this->assertSame(6434.99, $priceEntry['current_price']);
+        $this->assertSame(7023.93, $priceEntry['regular_price']);
+        $this->assertSame(5407.56, $priceEntry['price_excl_tax']);
+        $this->assertSame([['min_quantity' => 5, 'price' => 5853.08]], $priceEntry['tier_prices']);
+    }
+
+    public function testOwnCurrencyPriceIsNotConverted(): void
+    {
+        $contexts = ['' => [['languageCode' => 'en', 'domainUrl' => 'https://shop.example.com', 'currencyIso' => 'USD', 'currencyId' => 'curr-usd', 'currencyFactor' => '1.17085', 'currencyDecimals' => '2', 'currencyInterval' => '0.01', 'salesChannelId' => 'sc-1', 'languageId' => 'lang-en']]];
+        $tierRows = new ProductPriceCollection([
+            $this->createTierRow('public-5', 5, 5500.00, 4621.85, currencyId: 'curr-usd'),
+        ]);
+        $product = $this->createSimpleProduct('prod-own', 'Own USD', 'SKU-OWN', grossPrice: 5999.00, netPrice: 5041.18, tierPrices: $tierRows, priceCurrencyId: 'curr-usd');
+
+        $result = $this->formatter->formatProduct($product, $contexts);
+
+        $priceEntry = $result[0]['prices'][''][0];
+        $this->assertSame(5999.00, $priceEntry['current_price']);
+        $this->assertSame([['min_quantity' => 5, 'price' => 5500.00]], $priceEntry['tier_prices']);
+    }
+
+    /**
+     * @return array<string, array<int, array<string, string>>>
+     */
+    private function foreignCurrencyContexts(string $iso, string $factor, string $decimals = '2', string $interval = '0.01'): array
+    {
+        return ['' => [[
+            'languageCode' => 'en',
+            'domainUrl' => 'https://shop.example.com',
+            'currencyIso' => $iso,
+            'currencyId' => 'curr-foreign',
+            'currencyFactor' => $factor,
+            'currencyDecimals' => $decimals,
+            'currencyInterval' => $interval,
+            'salesChannelId' => 'sc-1',
+            'languageId' => 'lang-en',
+        ]]];
+    }
+
+    public function testConvertedPricesUseTheCurrencyCashRoundingInterval(): void
+    {
+        $tierRows = new ProductPriceCollection([
+            $this->createTierRow('public-5', 5, 90.00, 75.63, currencyId: Defaults::CURRENCY),
+        ]);
+        $product = $this->createSimpleProduct('prod-chf', 'CHF', 'SKU-CHF', grossPrice: 99.99, netPrice: 84.03, tierPrices: $tierRows, priceCurrencyId: Defaults::CURRENCY);
+
+        $result = $this->formatter->formatProduct($product, $this->foreignCurrencyContexts('CHF', '0.9371', interval: '0.05'));
+
+        $priceEntry = $result[0]['prices'][''][0];
+        // 99.99 * 0.9371 = 93.70 -> 93.70; 90.00 * 0.9371 = 84.339 -> 84.35
+        $this->assertSame(93.70, $priceEntry['current_price']);
+        $this->assertSame([['min_quantity' => 5, 'price' => 84.35]], $priceEntry['tier_prices']);
+    }
+
+    public function testConvertedPricesUseTheCurrencyDecimals(): void
+    {
+        $product = $this->createSimpleProduct('prod-jpy', 'JPY', 'SKU-JPY', grossPrice: 99.99, netPrice: 84.03, priceCurrencyId: Defaults::CURRENCY);
+
+        $result = $this->formatter->formatProduct($product, $this->foreignCurrencyContexts('JPY', '171.23', decimals: '0', interval: '1'));
+
+        $priceEntry = $result[0]['prices'][''][0];
+        $this->assertSame(17121.0, $priceEntry['current_price']);
+        $this->assertSame(14388.0, $priceEntry['price_excl_tax']);
+    }
+
+    public function testInvalidCurrencyFactorNeverZeroesPrices(): void
+    {
+        $product = $this->createSimpleProduct('prod-bad', 'Bad factor', 'SKU-BAD', grossPrice: 99.99, netPrice: 84.03, priceCurrencyId: Defaults::CURRENCY);
+
+        foreach (['0', '', 'abc', '-1'] as $factor) {
+            $result = $this->formatter->formatProduct($product, $this->foreignCurrencyContexts('USD', $factor));
+            $this->assertSame(99.99, $result[0]['prices'][''][0]['current_price'], "factor '$factor'");
+        }
+    }
+
+    public function testContextsWithoutCurrencyDataKeepTwoDecimalRounding(): void
+    {
+        $product = $this->createSimpleProduct('prod-legacy', 'Legacy ctx', 'SKU-LEG', grossPrice: 39.994, netPrice: 33.604);
+
+        $result = $this->formatter->formatProduct($product, $this->defaultChannelContexts);
+
+        $this->assertSame(39.99, $result[0]['prices'][''][0]['current_price']);
+        $this->assertSame(33.60, $result[0]['prices'][''][0]['price_excl_tax']);
+    }
+
     public function testNoTierPricesKeyWhenPricesNotLoaded(): void
     {
         $product = $this->createSimpleProduct('prod-notiers', 'No Tiers', 'SKU-NT', grossPrice: 39.99);
@@ -1110,9 +1221,11 @@ class ProductFormatterTest extends TestCase
         ?float $netPrice = null,
         ?ProductPriceCollection $tierPrices = null,
         ?\Shopware\Core\Content\Product\Aggregate\ProductVisibility\ProductVisibilityCollection $visibilities = null,
+        string $priceCurrencyId = 'curr-eur',
+        ?Price $listPrice = null,
     ): ProductEntity&MockObject {
         $price = $grossPrice !== null
-            ? new PriceCollection([new Price('curr-eur', $netPrice ?? $grossPrice, $grossPrice, false)])
+            ? new PriceCollection([new Price($priceCurrencyId, $netPrice ?? $grossPrice, $grossPrice, false, $listPrice)])
             : null;
 
         $product = $this->createMock(ProductEntity::class);

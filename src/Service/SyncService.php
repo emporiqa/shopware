@@ -671,7 +671,8 @@ class SyncService implements SyncServiceInterface, ResetInterface
      * Build channel contexts from active sales channels and channel mapping config.
      *
      * Returns an array grouped by Emporiqa channel key, where each entry contains
-     * domain information (URL, language code, currency ISO, sales channel ID, language ID)
+     * domain information (URL, language code, currency ISO, exchange factor and item
+     * rounding as strings, sales channel ID, language ID)
      * and the sales channel's tree roots (navigation, footer, service category IDs).
      * Sales channels and domain languages excluded by the enabled sales channels /
      * enabled languages settings are skipped.
@@ -745,6 +746,9 @@ class SyncService implements SyncServiceInterface, ResetInterface
                     'languageCode' => $langCode,
                     'currencyIso' => $currencyIso,
                     'currencyId' => $domain->getCurrencyId() ?? '',
+                    'currencyFactor' => (string) ($currency !== null ? $currency->getFactor() : 1.0),
+                    'currencyDecimals' => (string) ($currency?->getItemRounding()->getDecimals() ?? 2),
+                    'currencyInterval' => (string) ($currency?->getItemRounding()->getInterval() ?? 0.01),
                     'salesChannelId' => $salesChannel->getId(),
                     'languageId' => $language->getId(),
                     'navigationCategoryId' => $salesChannel->getNavigationCategoryId(),

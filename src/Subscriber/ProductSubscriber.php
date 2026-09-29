@@ -22,6 +22,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityDeletedEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityDeleteEvent;
+use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenContainerEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\Uuid\Uuid;
@@ -38,10 +39,10 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
     private const IGNORED_PAYLOAD_FIELDS = ['id', 'versionId', 'updatedAt', 'createdAt'];
     private const PRODUCT_ASSOCIATION_TABLES = ['product_media', 'product_price'];
 
-    /** @var array<string, true> Product IDs already queued for a full payload in this request */
+    /** @var array<string, true> Product IDs already queued for a full payload in the current write */
     private array $queuedProductIds = [];
 
-    /** @var array<string, true> Product IDs already queued for an availability payload in this request */
+    /** @var array<string, true> Product IDs already queued for an availability payload in the current write */
     private array $availabilityQueuedIds = [];
 
     /** @var array<string, true> Product IDs already queued for deletion in this request */
@@ -81,6 +82,7 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
             'product_media.deleted' => 'onProductAssociationDeleted',
             'product_price.written' => 'onProductAssociationWritten',
             'product_price.deleted' => 'onProductAssociationDeleted',
+            EntityWrittenContainerEvent::class => 'onWriteFinished',
         ];
 
         // Order-driven stock changes bypass product.written (StockStorage
@@ -335,6 +337,19 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
 
             $this->queueProductUpdate($productId, $event->getContext(), $channelContexts);
         }
+    }
+
+    /**
+     * The payload is built when a write is seen, so de-duplication must only
+     * span one DAL write: its nested entity events (product.written,
+     * product_price.written, ...) are dispatched before the container event.
+     * A later write to the same product in the same request or CLI run (an
+     * import writing the product and then its prices) must send fresh data.
+     */
+    public function onWriteFinished(EntityWrittenContainerEvent $event): void
+    {
+        $this->queuedProductIds = [];
+        $this->availabilityQueuedIds = [];
     }
 
     public function reset(): void

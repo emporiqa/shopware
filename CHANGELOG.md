@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.5 (2026-09-29)
+
+### Fixed
+- **Prices in other currencies are now converted.** A product priced only in the default currency was sent with the same amount for every other currency (for example 5,496 EUR became 5,496 USD). Prices, list prices and quantity prices now use the currency's exchange rate and rounding, exactly as the storefront shows them. Prices set explicitly for a currency are unchanged.
+- **Product changes saved in several steps are no longer lost.** When an import or integration saved a product and then its prices or images in separate steps of the same request or run, only the first step reached Emporiqa. Every step is now synced. Saving in the Administration was not affected.
+- **Products are re-synced once after updating from 1.2.4 or earlier**, so prices already sent to Emporiqa are corrected without any action. On a headless setup without the storefront, run Sync products once from the Emporiqa page.
+
 ## 1.2.4 (2026-09-29)
 
 ### Fixed

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.5 (2026-09-29)
+
+### Behoben
+- **Preise in weiteren Währungen werden jetzt umgerechnet.** Ein Artikel, der nur in der Standardwährung gepflegt ist, wurde für jede andere Währung mit demselben Betrag übertragen (zum Beispiel wurden aus 5.496 EUR 5.496 USD). Preise, Streichpreise und Staffelpreise verwenden jetzt den Umrechnungsfaktor und die Rundung der Währung, genau wie in der Storefront. Für eine Währung explizit gepflegte Preise bleiben unverändert.
+- **In mehreren Schritten gespeicherte Produktänderungen gehen nicht mehr verloren.** Wenn ein Import oder eine Schnittstelle einen Artikel und danach seine Preise oder Bilder in getrennten Schritten derselben Anfrage oder desselben Laufs gespeichert hat, kam nur der erste Schritt bei Emporiqa an. Jetzt wird jeder Schritt synchronisiert. Das Speichern in der Administration war nicht betroffen.
+- **Produkte werden nach dem Update von 1.2.4 oder älter einmalig neu synchronisiert**, sodass bereits an Emporiqa gesendete Preise ohne weiteres Zutun korrigiert werden. Ohne Storefront (Headless) bitte einmal „Produkte synchronisieren“ auf der Emporiqa-Seite ausführen.
+
 ## 1.2.4 (2026-09-29)
 
 ### Behoben

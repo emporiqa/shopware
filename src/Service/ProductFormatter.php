@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Emporiqa\ShopwarePlugin\Service;
 
+use Shopware\Core\Checkout\Cart\Price\CashRounding;
 use Shopware\Core\Content\Product\Aggregate\ProductMedia\ProductMediaEntity;
 use Shopware\Core\Content\Product\ProductEntity;
+use Shopware\Core\Framework\DataAbstractionLayer\Pricing\CashRoundingConfig;
+use Shopware\Core\Framework\DataAbstractionLayer\Pricing\Price;
 
 class ProductFormatter implements ProductFormatterInterface
 {
@@ -17,6 +20,7 @@ class ProductFormatter implements ProductFormatterInterface
     public function __construct(
         private readonly ConfigServiceInterface $config,
         private readonly GuestRuleResolverInterface $guestRuleResolver,
+        private readonly CashRounding $cashRounding = new CashRounding(),
     ) {
     }
 
@@ -112,7 +116,7 @@ class ProductFormatter implements ProductFormatterInterface
                 }
                 $seenCurrencies[$currencyIso] = true;
 
-                $priceEntry = $this->buildPriceEntry($product, $currencyIso, $ctx['currencyId'] ?? null, $ctx['salesChannelId'] ?? null);
+                $priceEntry = $this->buildPriceEntry($product, $currencyIso, $ctx['currencyId'] ?? null, $ctx['salesChannelId'] ?? null, (float) ($ctx['currencyFactor'] ?? 1.0), $this->itemRounding($ctx));
                 if ($priceEntry !== null) {
                     $channelPrices[] = $priceEntry;
                 }
@@ -365,7 +369,7 @@ class ProductFormatter implements ProductFormatterInterface
                     continue;
                 }
                 $seenCurrencies[$currencyIso] = true;
-                $priceEntry = $this->buildPriceEntry($variant, $currencyIso, $ctx['currencyId'] ?? null, $ctx['salesChannelId'] ?? null);
+                $priceEntry = $this->buildPriceEntry($variant, $currencyIso, $ctx['currencyId'] ?? null, $ctx['salesChannelId'] ?? null, (float) ($ctx['currencyFactor'] ?? 1.0), $this->itemRounding($ctx));
                 if ($priceEntry !== null) {
                     $channelPrices[] = $priceEntry;
                 }
@@ -576,7 +580,7 @@ class ProductFormatter implements ProductFormatterInterface
     /**
      * @return array{currency: string, current_price: float, regular_price: float, price_incl_tax?: float, price_excl_tax?: float, tier_prices?: array<int, array{min_quantity: int, price: float}>}|null
      */
-    private function buildPriceEntry(ProductEntity $product, string $currencyIso, ?string $currencyId = null, ?string $salesChannelId = null): ?array
+    private function buildPriceEntry(ProductEntity $product, string $currencyIso, ?string $currencyId = null, ?string $salesChannelId = null, float $currencyFactor = 1.0, ?CashRoundingConfig $rounding = null): ?array
     {
         $prices = $product->getPrice();
         if ($prices === null || $prices->count() === 0) {
@@ -595,10 +599,12 @@ class ProductFormatter implements ProductFormatterInterface
             return null;
         }
 
-        $gross = round($price->getGross(), 2);
-        $net = round($price->getNet(), 2);
+        $rounding ??= new CashRoundingConfig(2, 0.01, true);
+        $factor = $this->conversionFactor($price, $currencyId, $currencyFactor);
+        $gross = $this->cashRounding->cashRound($price->getGross() * $factor, $rounding);
+        $net = $this->cashRounding->mathRound($price->getNet() * $factor, $rounding);
         $listPrice = $price->getListPrice();
-        $regularGross = $listPrice !== null ? round($listPrice->getGross(), 2) : $gross;
+        $regularGross = $listPrice !== null ? $this->cashRounding->cashRound($listPrice->getGross() * $factor, $rounding) : $gross;
 
         // Headline is always the tax-included price (what a B2C shopper pays),
         // matching the other Emporiqa integrations. The incl./excl. pair is
@@ -616,7 +622,7 @@ class ProductFormatter implements ProductFormatterInterface
             $entry['price_excl_tax'] = $net;
         }
 
-        $tierPrices = $this->buildTierPrices($product, $currencyId, $entry['current_price'], $salesChannelId);
+        $tierPrices = $this->buildTierPrices($product, $currencyId, $entry['current_price'], $salesChannelId, $currencyFactor, $rounding);
         if (!empty($tierPrices)) {
             $entry['tier_prices'] = $tierPrices;
         }
@@ -634,7 +640,7 @@ class ProductFormatter implements ProductFormatterInterface
      *
      * @return array<int, array{min_quantity: int, price: float}>
      */
-    private function buildTierPrices(ProductEntity $product, ?string $currencyId, float $currentPrice, ?string $salesChannelId): array
+    private function buildTierPrices(ProductEntity $product, ?string $currencyId, float $currentPrice, ?string $salesChannelId, float $currencyFactor, CashRoundingConfig $rounding): array
     {
         $rulePrices = $product->getPrices();
         if ($rulePrices === null || $rulePrices->count() === 0 || $salesChannelId === null || $salesChannelId === '') {
@@ -661,15 +667,14 @@ class ProductFormatter implements ProductFormatterInterface
             }
 
             $priceCollection = $rulePrice->getPrice();
-            // No cross-currency fallback: a default-currency amount is not valid for this entry's currency
             $price = $currencyId !== null
-                ? $priceCollection->getCurrencyPrice($currencyId, false)
+                ? $priceCollection->getCurrencyPrice($currencyId)
                 : $priceCollection->first();
             if ($price === null) {
                 continue;
             }
 
-            $value = round($price->getGross(), 2);
+            $value = $this->cashRounding->cashRound($price->getGross() * $this->conversionFactor($price, $currencyId, $currencyFactor), $rounding);
 
             // Dedupe by quantity, keeping the lowest price (a rule may repeat a start quantity)
             if (!isset($byQuantity[$minQuantity]) || $value < $byQuantity[$minQuantity]) {
@@ -689,6 +694,37 @@ class ProductFormatter implements ProductFormatterInterface
         }
 
         return $tiers;
+    }
+
+    /**
+     * The storefront cash-rounds every unit price with the currency's item
+     * rounding (decimals and interval, e.g. 0.05 for CHF).
+     *
+     * @param array<string, string> $ctx
+     */
+    private function itemRounding(array $ctx): CashRoundingConfig
+    {
+        $decimals = isset($ctx['currencyDecimals']) && is_numeric($ctx['currencyDecimals']) ? (int) $ctx['currencyDecimals'] : 2;
+        $interval = isset($ctx['currencyInterval']) && is_numeric($ctx['currencyInterval']) ? (float) $ctx['currencyInterval'] : 0.01;
+        if ($decimals < 0 || $interval <= 0.0) {
+            return new CashRoundingConfig(2, 0.01, true);
+        }
+
+        return new CashRoundingConfig($decimals, $interval, true);
+    }
+
+    /**
+     * A product without its own price in the requested currency falls back to
+     * the default-currency price, which the storefront converts with the
+     * currency's exchange factor (ProductPriceCalculator). Mirror that here.
+     */
+    private function conversionFactor(Price $price, ?string $currencyId, float $currencyFactor): float
+    {
+        if ($currencyId === null || $currencyId === '' || $price->getCurrencyId() === $currencyId || $currencyFactor <= 0.0) {
+            return 1.0;
+        }
+
+        return $currencyFactor;
     }
 
     /**

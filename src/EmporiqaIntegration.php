@@ -12,20 +12,21 @@ use Shopware\Core\Framework\Plugin\Context\UpdateContext;
 
 class EmporiqaIntegration extends Plugin
 {
-    public const PLUGIN_VERSION = '1.2.4';
+    public const PLUGIN_VERSION = '1.2.5';
 
     /**
      * Before 1.2.4, tier prices from customer-group rules were synced as public
-     * prices. Emporiqa keeps them until each product is synced again, so an
-     * update from an affected version schedules one product re-sync.
+     * prices; before 1.2.5, prices in a non-default currency were sent without
+     * the exchange rate. Emporiqa keeps them until each product is synced
+     * again, so an update from an affected version schedules one product re-sync.
      */
-    private const FIRST_VERSION_WITH_SCOPED_TIER_PRICES = '1.2.4';
+    private const FIRST_VERSION_WITH_CORRECT_PRICES = '1.2.5';
 
     public function postUpdate(UpdateContext $updateContext): void
     {
         parent::postUpdate($updateContext);
 
-        if (version_compare($updateContext->getCurrentPluginVersion(), self::FIRST_VERSION_WITH_SCOPED_TIER_PRICES, '>=')) {
+        if (version_compare($updateContext->getCurrentPluginVersion(), self::FIRST_VERSION_WITH_CORRECT_PRICES, '>=')) {
             return;
         }
 
