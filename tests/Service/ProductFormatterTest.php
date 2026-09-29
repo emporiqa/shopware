@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Emporiqa\ShopwarePlugin\Tests\Service;
 
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
+use Emporiqa\ShopwarePlugin\Service\GuestRuleResolverInterface;
 use Emporiqa\ShopwarePlugin\Service\ProductFormatter;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -21,7 +22,11 @@ use Shopware\Core\Framework\DataAbstractionLayer\Pricing\PriceCollection;
 
 class ProductFormatterTest extends TestCase
 {
+    private const PUBLIC_RULE = 'rule-public';
+    private const DEALER_RULE = 'rule-dealer';
+
     private ConfigServiceInterface&MockObject $config;
+    private GuestRuleResolverInterface&MockObject $guestRuleResolver;
     private ProductFormatter $formatter;
 
     /** @var array<string, array<int, array<string, string>>> */
@@ -32,7 +37,11 @@ class ProductFormatterTest extends TestCase
         $this->config = $this->createMock(ConfigServiceInterface::class);
         $this->config->method('getBrandAttribute')->willReturn('');
 
-        $this->formatter = new ProductFormatter($this->config);
+        // Guests match only the public rule unless a test says otherwise
+        $this->guestRuleResolver = $this->createMock(GuestRuleResolverInterface::class);
+        $this->guestRuleResolver->method('getGuestRuleIds')->willReturn([self::PUBLIC_RULE]);
+
+        $this->formatter = new ProductFormatter($this->config, $this->guestRuleResolver);
 
         $this->defaultChannelContexts = [
             '' => [
@@ -823,7 +832,7 @@ class ProductFormatterTest extends TestCase
             $this->createTierRow('tier-0', 1, 39.99, 33.60),
             // qty 10 → kept
             $this->createTierRow('tier-1', 10, 30.00, 25.21),
-            // qty 5, two overlapping rules → dedupe keeps lowest (35.99)
+            // qty 5 repeated within the rule → dedupe keeps lowest (35.99)
             $this->createTierRow('tier-2', 5, 36.50, 30.67),
             $this->createTierRow('tier-3', 5, 35.99, 30.24),
             // qty 20 not cheaper than current price → dropped as no-op
@@ -845,6 +854,87 @@ class ProductFormatterTest extends TestCase
             ],
             $priceEntry['tier_prices'],
         );
+    }
+
+    /**
+     * A tier from a rule scoped to a customer group ("Dealer") must never be
+     * published, however cheap it is. Merging every rule's prices used to put
+     * B2B prices in front of every guest shopper.
+     */
+    public function testTierPricesFromRulesGuestsDoNotMatchAreNeverPublished(): void
+    {
+        $tierRows = new ProductPriceCollection([
+            $this->createTierRow('public-5', 5, 35.99, 30.24),
+            $this->createTierRow('dealer-5', 5, 20.00, 16.81, ruleId: self::DEALER_RULE),
+            $this->createTierRow('dealer-50', 50, 15.00, 12.61, ruleId: self::DEALER_RULE),
+        ]);
+
+        $product = $this->createSimpleProduct('prod-b2b', 'B2B', 'SKU-B2B', grossPrice: 39.99, netPrice: 33.60, tierPrices: $tierRows);
+
+        $result = $this->formatter->formatProduct($product, $this->defaultChannelContexts);
+
+        $this->assertSame([['min_quantity' => 5, 'price' => 35.99]], $result[0]['prices'][''][0]['tier_prices']);
+    }
+
+    public function testOnlyRestrictedRulePricesMeansNoTierPrices(): void
+    {
+        $tierRows = new ProductPriceCollection([
+            $this->createTierRow('dealer-10', 10, 20.00, 16.81, ruleId: self::DEALER_RULE),
+        ]);
+
+        $product = $this->createSimpleProduct('prod-dealer', 'Dealer only', 'SKU-D', grossPrice: 39.99, netPrice: 33.60, tierPrices: $tierRows);
+
+        $result = $this->formatter->formatProduct($product, $this->defaultChannelContexts);
+
+        $this->assertArrayNotHasKey('tier_prices', $result[0]['prices'][''][0]);
+    }
+
+    /**
+     * Like the storefront, the highest-priority matching rule that has prices
+     * on the product wins outright; a lower-priority rule is not mixed in.
+     */
+    public function testHighestPriorityGuestRuleWithPricesWins(): void
+    {
+        $resolver = $this->createMock(GuestRuleResolverInterface::class);
+        $resolver->method('getGuestRuleIds')->willReturn(['rule-no-prices', 'rule-sale', self::PUBLIC_RULE]);
+        $formatter = new ProductFormatter($this->config, $resolver);
+
+        $tierRows = new ProductPriceCollection([
+            $this->createTierRow('sale-10', 10, 32.00, 26.89, ruleId: 'rule-sale'),
+            $this->createTierRow('public-5', 5, 35.99, 30.24),
+        ]);
+
+        $product = $this->createSimpleProduct('prod-prio', 'Priority', 'SKU-PR', grossPrice: 39.99, netPrice: 33.60, tierPrices: $tierRows);
+
+        $result = $formatter->formatProduct($product, $this->defaultChannelContexts);
+
+        $this->assertSame([['min_quantity' => 10, 'price' => 32.00]], $result[0]['prices'][''][0]['tier_prices']);
+    }
+
+    public function testGuestRulesAreResolvedPerSalesChannelAndCurrency(): void
+    {
+        $resolver = $this->createMock(GuestRuleResolverInterface::class);
+        $resolver->expects($this->once())
+            ->method('getGuestRuleIds')
+            ->with('sc-1', 'curr-eur')
+            ->willReturn([self::PUBLIC_RULE]);
+        $formatter = new ProductFormatter($this->config, $resolver);
+
+        $tierRows = new ProductPriceCollection([$this->createTierRow('public-5', 5, 35.99, 30.24)]);
+        $product = $this->createSimpleProduct('prod-sc', 'Channel', 'SKU-SC', grossPrice: 39.99, netPrice: 33.60, tierPrices: $tierRows);
+
+        $formatter->formatProduct($product, $this->defaultChannelContexts);
+    }
+
+    public function testNoSalesChannelMeansNoTierPrices(): void
+    {
+        $contexts = ['' => [['languageCode' => 'en', 'domainUrl' => 'https://shop.example.com', 'currencyIso' => 'EUR', 'currencyId' => 'curr-eur', 'languageId' => 'lang-en']]];
+        $tierRows = new ProductPriceCollection([$this->createTierRow('public-5', 5, 35.99, 30.24)]);
+        $product = $this->createSimpleProduct('prod-nosc', 'No channel', 'SKU-NSC', grossPrice: 39.99, netPrice: 33.60, tierPrices: $tierRows);
+
+        $result = $this->formatter->formatProduct($product, $contexts);
+
+        $this->assertArrayNotHasKey('tier_prices', $result[0]['prices'][''][0]);
     }
 
     public function testPriceEntrySendsGrossHeadlineWithInclExclWhenTaxApplies(): void
@@ -993,11 +1083,12 @@ class ProductFormatterTest extends TestCase
         $this->assertSame(['retail', 'b2b'], array_keys($events[0]['availability_statuses']));
     }
 
-    private function createTierRow(string $id, int $quantityStart, float $gross, float $net, string $currencyId = 'curr-eur'): ProductPriceEntity
+    private function createTierRow(string $id, int $quantityStart, float $gross, float $net, string $currencyId = 'curr-eur', string $ruleId = self::PUBLIC_RULE): ProductPriceEntity
     {
         $row = new ProductPriceEntity();
         $row->setId(str_pad($id, 32, '0'));
         $row->setUniqueIdentifier($id);
+        $row->setRuleId($ruleId);
         $row->setQuantityStart($quantityStart);
         $row->setPrice(new PriceCollection([new Price($currencyId, $net, $gross, false)]));
 

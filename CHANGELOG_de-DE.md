@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.4 (2026-09-29)
+
+### Behoben
+- **Staffelpreise einer Kundengruppe werden nicht mehr allen Kunden angezeigt.** Erweiterte Preise wurden über alle Preisregeln hinweg zusammengeführt, sodass eine Regel für eine einzelne Kundengruppe (zum Beispiel Händler- oder B2B-Preise) im Chat als öffentlicher Mengenrabatt erscheinen konnte. Staffelpreise stammen jetzt nur noch aus der Regel mit der höchsten Priorität, die für einen Gast tatsächlich gilt, so wie die Storefront einen Artikel für nicht angemeldete Besucher berechnet.
+- **Produkte werden nach dem Update einmalig neu synchronisiert**, sodass bereits an Emporiqa gesendete Staffelpreise ohne weiteres Zutun korrigiert werden. Die Synchronisierung wird beim nächsten Storefront-Seitenaufruf im Hintergrund eingeplant. Ohne Storefront (Headless) bitte einmal „Produkte synchronisieren“ auf der Emporiqa-Seite ausführen.
+
 ## 1.2.3 (2026-09-21)
 
 ### Behoben

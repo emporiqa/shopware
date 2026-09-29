@@ -17,6 +17,13 @@ services:
 
     Emporiqa\ShopwarePlugin\Service\ConnectServiceInterface: '@Emporiqa\ShopwarePlugin\Service\ConnectService'
 
+    Emporiqa\ShopwarePlugin\Service\GuestRuleResolver:
+        arguments:
+            $salesChannelContextFactory: '@Shopware\Core\System\SalesChannel\Context\SalesChannelContextFactory'
+            $ruleLoader: '@Shopware\Core\Checkout\Cart\RuleLoader'
+
+    Emporiqa\ShopwarePlugin\Service\GuestRuleResolverInterface: '@Emporiqa\ShopwarePlugin\Service\GuestRuleResolver'
+
     Emporiqa\ShopwarePlugin\Service\ProductFormatter: ~
 
     Emporiqa\ShopwarePlugin\Service\ProductFormatterInterface: '@Emporiqa\ShopwarePlugin\Service\ProductFormatter'
@@ -84,6 +91,8 @@ services:
             $connection: '@Doctrine\DBAL\Connection'
 
     Emporiqa\ShopwarePlugin\Subscriber\CatalogChangeSubscriber: ~
+
+    Emporiqa\ShopwarePlugin\Subscriber\UpgradeResyncSubscriber: ~
 
     Emporiqa\ShopwarePlugin\Subscriber\StorefrontSubscriber:
         arguments:

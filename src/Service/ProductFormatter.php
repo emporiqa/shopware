@@ -16,6 +16,7 @@ class ProductFormatter implements ProductFormatterInterface
 
     public function __construct(
         private readonly ConfigServiceInterface $config,
+        private readonly GuestRuleResolverInterface $guestRuleResolver,
     ) {
     }
 
@@ -111,7 +112,7 @@ class ProductFormatter implements ProductFormatterInterface
                 }
                 $seenCurrencies[$currencyIso] = true;
 
-                $priceEntry = $this->buildPriceEntry($product, $currencyIso, $ctx['currencyId'] ?? null);
+                $priceEntry = $this->buildPriceEntry($product, $currencyIso, $ctx['currencyId'] ?? null, $ctx['salesChannelId'] ?? null);
                 if ($priceEntry !== null) {
                     $channelPrices[] = $priceEntry;
                 }
@@ -364,7 +365,7 @@ class ProductFormatter implements ProductFormatterInterface
                     continue;
                 }
                 $seenCurrencies[$currencyIso] = true;
-                $priceEntry = $this->buildPriceEntry($variant, $currencyIso, $ctx['currencyId'] ?? null);
+                $priceEntry = $this->buildPriceEntry($variant, $currencyIso, $ctx['currencyId'] ?? null, $ctx['salesChannelId'] ?? null);
                 if ($priceEntry !== null) {
                     $channelPrices[] = $priceEntry;
                 }
@@ -575,7 +576,7 @@ class ProductFormatter implements ProductFormatterInterface
     /**
      * @return array{currency: string, current_price: float, regular_price: float, price_incl_tax?: float, price_excl_tax?: float, tier_prices?: array<int, array{min_quantity: int, price: float}>}|null
      */
-    private function buildPriceEntry(ProductEntity $product, string $currencyIso, ?string $currencyId = null): ?array
+    private function buildPriceEntry(ProductEntity $product, string $currencyIso, ?string $currencyId = null, ?string $salesChannelId = null): ?array
     {
         $prices = $product->getPrice();
         if ($prices === null || $prices->count() === 0) {
@@ -615,7 +616,7 @@ class ProductFormatter implements ProductFormatterInterface
             $entry['price_excl_tax'] = $net;
         }
 
-        $tierPrices = $this->buildTierPrices($product, $currencyId, $entry['current_price']);
+        $tierPrices = $this->buildTierPrices($product, $currencyId, $entry['current_price'], $salesChannelId);
         if (!empty($tierPrices)) {
             $entry['tier_prices'] = $tierPrices;
         }
@@ -624,19 +625,36 @@ class ProductFormatter implements ProductFormatterInterface
     }
 
     /**
-     * Build quantity-discount tiers from advanced (rule) prices for one currency.
+     * Build quantity-discount tiers from the advanced prices a guest shopper sees, for one currency.
+     *
+     * Only the highest-priority rule that a guest matches and that has prices on
+     * this product counts, the same selection the storefront's price calculator
+     * makes. Prices of rules scoped to a customer group or any other audience are
+     * never published.
      *
      * @return array<int, array{min_quantity: int, price: float}>
      */
-    private function buildTierPrices(ProductEntity $product, ?string $currencyId, float $currentPrice): array
+    private function buildTierPrices(ProductEntity $product, ?string $currencyId, float $currentPrice, ?string $salesChannelId): array
     {
         $rulePrices = $product->getPrices();
-        if ($rulePrices === null || $rulePrices->count() === 0) {
+        if ($rulePrices === null || $rulePrices->count() === 0 || $salesChannelId === null || $salesChannelId === '') {
+            return [];
+        }
+
+        $guestRulePrices = null;
+        foreach ($this->guestRuleResolver->getGuestRuleIds($salesChannelId, $currencyId) as $ruleId) {
+            $filtered = $rulePrices->filterByRuleId($ruleId);
+            if ($filtered->count() > 0) {
+                $guestRulePrices = $filtered;
+                break;
+            }
+        }
+        if ($guestRulePrices === null) {
             return [];
         }
 
         $byQuantity = [];
-        foreach ($rulePrices as $rulePrice) {
+        foreach ($guestRulePrices as $rulePrice) {
             $minQuantity = $rulePrice->getQuantityStart();
             if ($minQuantity <= 1) {
                 continue;
@@ -653,7 +671,7 @@ class ProductFormatter implements ProductFormatterInterface
 
             $value = round($price->getGross(), 2);
 
-            // Dedupe by quantity, keeping the lowest price (multiple rules may overlap)
+            // Dedupe by quantity, keeping the lowest price (a rule may repeat a start quantity)
             if (!isset($byQuantity[$minQuantity]) || $value < $byQuantity[$minQuantity]) {
                 $byQuantity[$minQuantity] = $value;
             }

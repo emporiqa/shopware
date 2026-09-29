@@ -5,12 +5,37 @@ declare(strict_types=1);
 namespace Emporiqa\ShopwarePlugin;
 
 use Doctrine\DBAL\Connection;
+use Emporiqa\ShopwarePlugin\Subscriber\UpgradeResyncSubscriber;
 use Shopware\Core\Framework\Plugin;
 use Shopware\Core\Framework\Plugin\Context\UninstallContext;
+use Shopware\Core\Framework\Plugin\Context\UpdateContext;
 
 class EmporiqaIntegration extends Plugin
 {
-    public const PLUGIN_VERSION = '1.2.3';
+    public const PLUGIN_VERSION = '1.2.4';
+
+    /**
+     * Before 1.2.4, tier prices from customer-group rules were synced as public
+     * prices. Emporiqa keeps them until each product is synced again, so an
+     * update from an affected version schedules one product re-sync.
+     */
+    private const FIRST_VERSION_WITH_SCOPED_TIER_PRICES = '1.2.4';
+
+    public function postUpdate(UpdateContext $updateContext): void
+    {
+        parent::postUpdate($updateContext);
+
+        if (version_compare($updateContext->getCurrentPluginVersion(), self::FIRST_VERSION_WITH_SCOPED_TIER_PRICES, '>=')) {
+            return;
+        }
+
+        try {
+            $this->container->get('Shopware\Core\System\SystemConfig\SystemConfigService')
+                ->set(UpgradeResyncSubscriber::PENDING_RESYNC_KEY, true);
+        } catch (\Throwable $e) {
+            // Never fail the update; the changelog also asks for a manual product sync.
+        }
+    }
 
     public function uninstall(UninstallContext $uninstallContext): void
     {

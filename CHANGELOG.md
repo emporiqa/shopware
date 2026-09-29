@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.4 (2026-09-29)
+
+### Fixed
+- **Quantity prices for a customer group are no longer shown to every shopper.** Advanced prices were merged across all price rules, so a rule meant for one customer group (for example dealer or B2B prices) could appear as a public quantity discount in the chat. Quantity prices now come only from the highest-priority rule a guest shopper actually matches, the same way the storefront prices a product for a visitor who is not logged in.
+- **Products are re-synced once after updating**, so quantity prices already sent to Emporiqa are corrected without any action. The sync is queued in the background with the next storefront page view. On a headless setup without the storefront, run Sync products once from the Emporiqa page.
+
 ## 1.2.3 (2026-09-21)
 
 ### Fixed
