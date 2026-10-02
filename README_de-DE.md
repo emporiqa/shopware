@@ -160,7 +160,7 @@ Jeder Service ist gegen ein Interface definiert (`ProductFormatterInterface`, `C
 
 ## Preise
 
-Das Plugin ist kostenfrei. Emporiqa selbst rechnet nutzungsbasiert ab: 0 $/Monat Grundgebühr plus 0,25 $ pro Konversation, mit 25 $ Startguthaben (rund 100 Konversationen) und ohne Karte bei der Anmeldung. Ist das Startguthaben aufgebraucht, gilt eine monatliche Kostenobergrenze von standardmäßig 59 $, die Sie im Abrechnungsbereich selbst ändern können. Der Sprachmodus (sprechen statt tippen: der Kunde spricht und bekommt die Antwort vorgelesen) ist optional und standardmäßig ausgeschaltet. Spricht der Kunde, kommen einmalig 0,25 $ für dieses Gespräch hinzu, die auf die Obergrenze angerechnet werden. Preise verstehen sich zzgl. MwSt. Für Kataloge über 100.000 Produkte gibt es ein Enterprise-Angebot. Alle Preisangaben unter [emporiqa.com/de/pricing/](https://emporiqa.com/de/pricing/).
+Das Plugin ist kostenfrei. Emporiqa selbst rechnet nutzungsbasiert ab: 0 $/Monat Grundgebühr plus 0,25 $ pro Konversation, mit 25 $ Startguthaben (rund 100 Konversationen) und ohne Karte bei der Anmeldung. Ist das Startguthaben aufgebraucht, gilt eine monatliche Kostenobergrenze von standardmäßig 59 $, die Sie im Abrechnungsbereich selbst ändern können. Der Sprachmodus (sprechen statt tippen: der Kunde spricht und bekommt die Antwort vorgelesen) ist optional und standardmäßig ausgeschaltet. Spricht der Kunde, kommen einmalig 0,15 $ für dieses Gespräch hinzu, die auf die Obergrenze angerechnet werden. Preise verstehen sich zzgl. MwSt. Für Kataloge über 100.000 Produkte gibt es ein Enterprise-Angebot. Alle Preisangaben unter [emporiqa.com/de/pricing/](https://emporiqa.com/de/pricing/).
 
 ## Support
 
