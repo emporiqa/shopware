@@ -10,6 +10,7 @@ use Emporiqa\ShopwarePlugin\MessageQueue\Message\WebhookMessage;
 use Emporiqa\ShopwarePlugin\Service\CmsPageFormatterInterface;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\SyncServiceInterface;
+use Emporiqa\ShopwarePlugin\Service\SystemContext;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Content\Category\CategoryCollection;
 use Shopware\Core\Content\Category\CategoryEntity;
@@ -77,7 +78,7 @@ class PageResyncMessageHandler
         $this->createdIds = array_fill_keys($message->getCreatedIds(), true);
         $this->events = [];
         $this->stats = ['updated' => 0, 'deleted' => 0];
-        $context = Context::createCLIContext();
+        $context = SystemContext::create();
 
         foreach (array_chunk($message->getLandingPageIds(), self::BATCH_SIZE) as $ids) {
             foreach ($this->loadLandingPages($this->landingPageCriteria(new Criteria($ids)), $context) as $landingPage) {

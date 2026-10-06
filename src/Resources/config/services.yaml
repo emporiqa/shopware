@@ -13,7 +13,9 @@ services:
 
     Emporiqa\ShopwarePlugin\Service\WebhookClientInterface: '@Emporiqa\ShopwarePlugin\Service\WebhookClient'
 
-    Emporiqa\ShopwarePlugin\Service\ConnectService: ~
+    Emporiqa\ShopwarePlugin\Service\ConnectService:
+        arguments:
+            $connection: '@Doctrine\DBAL\Connection'
 
     Emporiqa\ShopwarePlugin\Service\ConnectServiceInterface: '@Emporiqa\ShopwarePlugin\Service\ConnectService'
 
@@ -112,6 +114,27 @@ services:
     Emporiqa\ShopwarePlugin\Controller\UserTokenController:
         public: true
 
+    Emporiqa\ShopwarePlugin\Service\ActionGuard:
+        arguments:
+            $connection: '@Doctrine\DBAL\Connection'
+
+    Emporiqa\ShopwarePlugin\Service\OrderStatusService:
+        arguments:
+            $orderRepository: '@order.repository'
+
+    Emporiqa\ShopwarePlugin\Service\CustomerPriceService:
+        arguments:
+            $contextFactory: '@Shopware\Core\System\SalesChannel\Context\SalesChannelContextFactory'
+            $ruleLoader: '@Shopware\Core\Checkout\Cart\RuleLoader'
+            $productRepository: '@sales_channel.product.repository'
+            $customerRepository: '@customer.repository'
+            $connection: '@Doctrine\DBAL\Connection'
+
+    Emporiqa\ShopwarePlugin\Controller\ActionController:
+        public: true
+
+    Emporiqa\ShopwarePlugin\Subscriber\MaintenanceBypassSubscriber: ~
+
     Emporiqa\ShopwarePlugin\Controller\Admin\ConnectController:
         public: true
 
@@ -134,3 +157,12 @@ services:
     Emporiqa\ShopwarePlugin\Command\TestConnectionCommand:
         arguments:
             $productRepository: '@product.repository'
+
+    Emporiqa\ShopwarePlugin\ScheduledTask\PriceRuleBoundaryTask:
+        tags:
+            - { name: shopware.scheduled.task }
+
+    Emporiqa\ShopwarePlugin\ScheduledTask\PriceRuleBoundaryTaskHandler:
+        arguments:
+            $scheduledTaskRepository: '@scheduled_task.repository'
+            $connection: '@Doctrine\DBAL\Connection'

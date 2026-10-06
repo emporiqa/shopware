@@ -37,7 +37,7 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
 
     private const STOCK_ONLY_FIELDS = ['stock', 'availableStock', 'available', 'sales'];
     private const IGNORED_PAYLOAD_FIELDS = ['id', 'versionId', 'updatedAt', 'createdAt'];
-    private const PRODUCT_ASSOCIATION_TABLES = ['product_media', 'product_price'];
+    private const PRODUCT_ASSOCIATION_TABLES = ['product_media', 'product_price', 'product_visibility'];
 
     /** @var array<string, true> Product IDs already queued for a full payload in the current write */
     private array $queuedProductIds = [];
@@ -82,6 +82,10 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
             'product_media.deleted' => 'onProductAssociationDeleted',
             'product_price.written' => 'onProductAssociationWritten',
             'product_price.deleted' => 'onProductAssociationDeleted',
+            // Adding or removing a sales channel, or changing its visibility,
+            // writes only these rows, not the product.
+            'product_visibility.written' => 'onProductAssociationWritten',
+            'product_visibility.deleted' => 'onProductAssociationDeleted',
             EntityWrittenContainerEvent::class => 'onWriteFinished',
         ];
 
@@ -294,12 +298,35 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
             return;
         }
 
+        $productIds = [];
+        $rowIdsWithoutProduct = [];
         foreach ($event->getWriteResults() as $result) {
             $productId = $result->getPayload()['productId'] ?? null;
-            if (!\is_string($productId) || $productId === '') {
+            if (\is_string($productId) && $productId !== '') {
+                $productIds[] = $productId;
                 continue;
             }
+            // An update of an existing row carries only the changed fields: a
+            // visibility changed to "Hide in listings and search" has no productId.
+            $rowId = self::primaryKeyId($result->getPrimaryKey());
+            if ($rowId !== null && Uuid::isValid($rowId)) {
+                $rowIdsWithoutProduct[] = $rowId;
+            }
+        }
 
+        $table = $event->getEntityName();
+        if ($rowIdsWithoutProduct !== [] && \in_array($table, self::PRODUCT_ASSOCIATION_TABLES, true)) {
+            $rows = $this->connection->fetchAllKeyValue(
+                \sprintf('SELECT LOWER(HEX(`id`)), LOWER(HEX(`product_id`)) FROM `%s` WHERE `id` IN (:ids)', $table),
+                ['ids' => Uuid::fromHexToBytesList($rowIdsWithoutProduct)],
+                ['ids' => ArrayParameterType::BINARY],
+            );
+            foreach ($rows as $mappedProductId) {
+                $productIds[] = (string) $mappedProductId;
+            }
+        }
+
+        foreach ($productIds as $productId) {
             $this->queueProductUpdate($productId, $event->getContext(), $channelContexts);
         }
     }
@@ -512,28 +539,20 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
         }
 
         if (!$fullProduct->getActive()) {
-            $this->deletedProductIds[$productId] = true;
-
-            $deletePayloads = $this->productFormatter->formatProductDelete($productId);
-            $events = [];
-            foreach ($deletePayloads as $deleteData) {
-                $events[] = ['type' => 'product.deleted', 'data' => $deleteData];
-            }
-            if (!empty($events)) {
-                try {
-                    $this->messageBus->dispatch(new WebhookMessage($events));
-                } catch (\Throwable $e) {
-                    $this->logger->error('[Emporiqa] Failed to queue product deactivation webhook.', [
-                        'productId' => $productId,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
+            $this->dispatchProductRemoval($productId, $fullProduct, 'Failed to queue product deactivation webhook.');
 
             return;
         }
 
         $formatted = $this->productFormatter->formatProduct($fullProduct, $channelContexts);
+
+        // No synced sales channel shows it (no visibility, or "Hide in listings
+        // and search"), so it leaves Emporiqa now, as a full sync would remove it.
+        if ($formatted === []) {
+            $this->dispatchProductRemoval($productId, $fullProduct, 'Failed to queue webhook for a product no sales channel shows.');
+
+            return;
+        }
 
         $postFormatEvent = new PostProductFormatEvent($fullProduct, $formatted, $eventType);
         $this->eventDispatcher->dispatch($postFormatEvent);
@@ -551,6 +570,35 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
             $this->messageBus->dispatch(new WebhookMessage($events));
         } catch (\Throwable $e) {
             $this->logger->error('[Emporiqa] Failed to queue product webhook.', [
+                'productId' => $productId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Removes a product from Emporiqa: product.deleted for it and for every
+     * variant it has, as when the product itself is deleted.
+     */
+    private function dispatchProductRemoval(string $productId, ProductEntity $product, string $errorMessage): void
+    {
+        $this->deletedProductIds[$productId] = true;
+
+        $events = [];
+        foreach ($this->productFormatter->formatProductDelete($productId) as $deleteData) {
+            $events[] = ['type' => 'product.deleted', 'data' => $deleteData];
+        }
+        foreach ($product->getChildren() ?? [] as $child) {
+            $events[] = ['type' => 'product.deleted', 'data' => ['identification_number' => 'variation-' . $child->getId()]];
+        }
+        if ($events === []) {
+            return;
+        }
+
+        try {
+            $this->messageBus->dispatch(new WebhookMessage($events));
+        } catch (\Throwable $e) {
+            $this->logger->error('[Emporiqa] ' . $errorMessage, [
                 'productId' => $productId,
                 'error' => $e->getMessage(),
             ]);
@@ -599,7 +647,11 @@ class ProductSubscriber implements EventSubscriberInterface, ResetInterface
         $criteria->addAssociation('children');
         $criteria->addAssociation('visibilities');
 
-        $product = $this->productRepository->search($criteria, $context)->getEntities()->first();
+        // A variant usually inherits its visibilities. Read without inheritance
+        // (an admin or CLI write) they are empty, which reads as "in no sales
+        // channel" and would drop every stock change of a variant.
+        $search = fn (Context $ctx) => $this->productRepository->search($criteria, $ctx)->getEntities()->first();
+        $product = $context->considerInheritance() ? $search($context) : $context->enableInheritance($search);
 
         return $product instanceof ProductEntity ? $product : null;
     }

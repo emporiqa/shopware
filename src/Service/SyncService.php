@@ -20,6 +20,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\MultiFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\NotFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\RangeFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Psr\Log\LoggerInterface;
@@ -91,13 +92,12 @@ class SyncService implements SyncServiceInterface, ResetInterface
             }
         }
 
-        $context = Context::createCLIContext();
+        $context = SystemContext::create();
+        $afterId = '';
         $offset = 0;
 
         while (true) {
-            $criteria = $this->buildProductCriteria();
-            $criteria->setOffset($offset);
-            $criteria->setLimit($batchSize);
+            $criteria = self::keyset($this->buildProductCriteria(), $afterId, $batchSize);
 
             $products = $this->productRepository->search($criteria, $context)->getEntities();
 
@@ -108,6 +108,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
             [$events, $count] = $this->formatProductEvents($products, $channelContexts, $sessionId);
             $totalProducts += $count;
 
+            $afterId = (string) $products->last()?->getId();
             $offset += $products->count();
 
             if (!$dryRun && !empty($events)) {
@@ -188,13 +189,12 @@ class SyncService implements SyncServiceInterface, ResetInterface
             }
         }
 
-        $context = Context::createCLIContext();
+        $context = SystemContext::create();
+        $afterId = '';
         $offset = 0;
 
         while (true) {
-            $criteria = $this->buildLandingPageCriteria();
-            $criteria->setOffset($offset);
-            $criteria->setLimit($batchSize);
+            $criteria = self::keyset($this->buildLandingPageCriteria(), $afterId, $batchSize);
 
             $landingPages = $this->landingPageRepository->search($criteria, $context)->getEntities();
 
@@ -205,6 +205,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
             [$events, $count] = $this->formatLandingPageEvents($landingPages, $channelContexts, $sessionId);
             $totalPages += $count;
 
+            $afterId = (string) $landingPages->last()?->getId();
             $offset += $landingPages->count();
 
             if (!$dryRun && !empty($events)) {
@@ -222,11 +223,10 @@ class SyncService implements SyncServiceInterface, ResetInterface
         }
 
         // Sync shop pages (categories of type 'page' with a shop or landing page layout)
+        $afterId = '';
         $offset = 0;
         while (true) {
-            $criteria = $this->buildShopPageCriteria();
-            $criteria->setOffset($offset);
-            $criteria->setLimit($batchSize);
+            $criteria = self::keyset($this->buildShopPageCriteria(), $afterId, $batchSize);
 
             $shopPages = $this->categoryRepository->search($criteria, $context)->getEntities();
 
@@ -237,6 +237,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
             [$events, $count] = $this->formatShopPageEvents($shopPages, $channelContexts, $sessionId);
             $totalPages += $count;
 
+            $afterId = (string) $shopPages->last()?->getId();
             $offset += $shopPages->count();
 
             if (!$dryRun && !empty($events)) {
@@ -300,6 +301,43 @@ class SyncService implements SyncServiceInterface, ResetInterface
         ];
     }
 
+    public function resyncProducts(array $productIds): int
+    {
+        $channelContexts = $this->buildChannelContexts();
+        if ($channelContexts === [] || $productIds === []) {
+            return 0;
+        }
+
+        $sent = 0;
+        $errors = [];
+        $afterId = '';
+        while (true) {
+            $criteria = $this->buildProductCriteria();
+            $criteria->setIds($productIds);
+            $products = $this->productRepository->search(self::keyset($criteria, $afterId, $this->config->getBatchSize()), SystemContext::create())->getEntities();
+            if ($products->count() === 0) {
+                break;
+            }
+            $afterId = (string) $products->last()?->getId();
+
+            $events = [];
+            foreach ($products as $product) {
+                foreach ($this->productFormatter->formatProduct($product, $channelContexts) as $item) {
+                    $events[] = ['type' => 'product.updated', 'data' => $item];
+                }
+            }
+            if ($events !== [] && $this->sendEventsInChunks($events, $sent, '', 'product', 'product re-sync', $errors)) {
+                break;
+            }
+            $sent += $products->count();
+        }
+        if ($errors !== []) {
+            $this->logger->warning('[Emporiqa] Product re-sync had errors.', ['errors' => $errors]);
+        }
+
+        return $sent;
+    }
+
     /**
      * Send events to the webhook API in bounded-size chunks so a single HTTP
      * request never carries more than EVENTS_PER_REQUEST events. A failed
@@ -312,7 +350,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
      */
     private function sendEventsInChunks(
         array $events,
-        int $offset,
+        int|string $offset,
         string $sessionId,
         string $batchLabel,
         string $rateLimitContext,
@@ -321,7 +359,10 @@ class SyncService implements SyncServiceInterface, ResetInterface
         foreach (array_chunk($events, self::EVENTS_PER_REQUEST) as $chunk) {
             try {
                 if (!$this->webhookClient->sendBatchEvents($chunk)) {
-                    $error = "Failed to send {$batchLabel} batch at offset {$offset}.";
+                    // A keyset cursor (an id, or '' for the first page) means nothing to a merchant.
+                    $error = \is_int($offset)
+                        ? "Failed to send {$batchLabel} batch at offset {$offset}."
+                        : "Failed to send {$batchLabel} batch.";
                     $detail = $this->webhookClient->getLastError();
                     if ($detail !== null && $detail !== '') {
                         $error .= ' ' . $detail;
@@ -344,7 +385,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
 
     public function countItems(string $entity): int
     {
-        $context = Context::createCLIContext();
+        $context = SystemContext::create();
 
         if ($entity === 'products') {
             $criteria = new Criteria();
@@ -363,23 +404,37 @@ class SyncService implements SyncServiceInterface, ResetInterface
         return 0;
     }
 
-    public function syncBatch(string $entity, int $page, string $sessionId, ?int $batchSize = null): array
+    public function syncBatch(string $entity, string $cursor, string $sessionId, ?int $batchSize = null): array
     {
         // Pin the page size for the whole session (passed from the sync-init
-        // snapshot), re-reading config mid-session would shift offsets when
-        // a merchant changes batchSize while a driven sync is running, and
-        // the resulting skipped items would be deleted by sync.complete.
+        // snapshot), so a merchant changing batchSize mid-sync changes nothing.
         $batchSize ??= $this->config->getBatchSize();
 
         if ($entity === 'products') {
-            return $this->syncProductBatch($page, $sessionId, $batchSize);
+            return $this->syncProductBatch($cursor, $sessionId, $batchSize);
         }
 
         if ($entity === 'pages') {
-            return $this->syncPageBatch($page, $sessionId, $batchSize);
+            return $this->syncPageBatch($cursor, $sessionId, $batchSize);
         }
 
-        return ['success' => false, 'processed' => 0, 'events' => 0, 'error' => 'Unknown entity.'];
+        return ['success' => false, 'processed' => 0, 'events' => 0, 'error' => 'Unknown entity.', 'nextCursor' => null];
+    }
+
+    /**
+     * Page by id (keyset), never OFFSET: an item that drops out of the
+     * filter mid-sync (deactivated, deleted) would shift every later page by
+     * one, skip a live item, and sync.complete would then delete it.
+     */
+    private static function keyset(Criteria $criteria, string $afterId, int $limit): Criteria
+    {
+        if ($afterId !== '') {
+            // Binary, as stored: the DAL passes a RangeFilter value through unconverted.
+            $criteria->addFilter(new RangeFilter('id', [RangeFilter::GT => Uuid::fromHexToBytes($afterId)]));
+        }
+        $criteria->setLimit($limit);
+
+        return $criteria;
     }
 
     private function countLandingPages(Context $context): int
@@ -412,84 +467,62 @@ class SyncService implements SyncServiceInterface, ResetInterface
     }
 
     /**
-     * Process a single page of the products driven sync, same criteria and
-     * id ASC ordering as syncProducts(), offset by (page - 1) * batch size.
+     * One batch of the products driven sync: the next $batchSize parents
+     * after the id in $cursor ('' to start). nextCursor is null after the last.
      *
-     * @return array{success: bool, processed: int, events: int, error?: string}
+     * @return array{success: bool, processed: int, events: int, error?: string, nextCursor: ?string}
      */
-    private function syncProductBatch(int $page, string $sessionId, int $batchSize): array
+    private function syncProductBatch(string $cursor, string $sessionId, int $batchSize): array
     {
         $channelContexts = $this->buildChannelContexts();
         if (empty($channelContexts)) {
-            return ['success' => true, 'processed' => 0, 'events' => 0];
+            return ['success' => true, 'processed' => 0, 'events' => 0, 'nextCursor' => null];
         }
 
-        $offset = max(0, ($page - 1) * $batchSize);
-        $context = Context::createCLIContext();
-
-        $criteria = $this->buildProductCriteria();
-        $criteria->setOffset($offset);
-        $criteria->setLimit($batchSize);
-
-        $products = $this->productRepository->search($criteria, $context)->getEntities();
+        $criteria = self::keyset($this->buildProductCriteria(), $cursor, $batchSize);
+        $products = $this->productRepository->search($criteria, SystemContext::create())->getEntities();
 
         [$events, $processed] = $this->formatProductEvents($products, $channelContexts, $sessionId);
 
-        return $this->sendBatchResult($events, $processed, $offset, $sessionId, 'product', 'product sync');
+        $result = $this->sendBatchResult($events, $processed, $cursor, $sessionId, 'product', 'product sync');
+        $result['nextCursor'] = $products->count() < $batchSize ? null : (string) $products->last()?->getId();
+
+        return $result;
     }
 
     /**
-     * Process a single page of the pages driven sync, pages across landing
-     * pages first, then shop-page categories, using one continuous offset so
-     * the page boundaries match countItems('pages').
+     * One batch of the pages driven sync: landing pages first, then shop-page
+     * categories. The cursor names the phase and the last id
+     * ("landing:<id>", "shop:<id>"; '' starts with landing pages).
      *
-     * @return array{success: bool, processed: int, events: int, error?: string}
+     * @return array{success: bool, processed: int, events: int, error?: string, nextCursor: ?string}
      */
-    private function syncPageBatch(int $page, string $sessionId, int $batchSize): array
+    private function syncPageBatch(string $cursor, string $sessionId, int $batchSize): array
     {
         $channelContexts = $this->buildChannelContexts();
         if (empty($channelContexts)) {
-            return ['success' => true, 'processed' => 0, 'events' => 0];
+            return ['success' => true, 'processed' => 0, 'events' => 0, 'nextCursor' => null];
         }
 
-        $offset = max(0, ($page - 1) * $batchSize);
-        $context = Context::createCLIContext();
+        [$phase, $afterId] = str_contains($cursor, ':') ? explode(':', $cursor, 2) : ['landing', ''];
+        $context = SystemContext::create();
 
-        $landingPageCount = $this->countLandingPages($context);
-
-        $events = [];
-        $processed = 0;
-        $landingPagesFetched = 0;
-
-        if ($offset < $landingPageCount) {
-            $criteria = $this->buildLandingPageCriteria();
-            $criteria->setOffset($offset);
-            $criteria->setLimit(min($batchSize, $landingPageCount - $offset));
-
-            $landingPages = $this->landingPageRepository->search($criteria, $context)->getEntities();
-            $landingPagesFetched = $landingPages->count();
-            [$landingEvents, $landingProcessed] = $this->formatLandingPageEvents($landingPages, $channelContexts, $sessionId);
-            $events = array_merge($events, $landingEvents);
-            $processed += $landingProcessed;
+        if ($phase === 'landing') {
+            $criteria = self::keyset($this->buildLandingPageCriteria(), $afterId, $batchSize);
+            $pages = $this->landingPageRepository->search($criteria, $context)->getEntities();
+            [$events, $processed] = $this->formatLandingPageEvents($pages, $channelContexts, $sessionId);
+            $next = $pages->count() < $batchSize ? 'shop:' : 'landing:' . $pages->last()?->getId();
+        } else {
+            $criteria = self::keyset($this->buildShopPageCriteria(), $afterId, $batchSize);
+            $pages = $this->categoryRepository->search($criteria, $context)->getEntities();
+            [$events, $processed] = $this->formatShopPageEvents($pages, $channelContexts, $sessionId);
+            $next = $pages->count() < $batchSize ? null : 'shop:' . $pages->last()?->getId();
         }
 
-        // Based on fetched rows, not formatted pages, so skipped landing pages
-        // don't shift the shop page window into the next batch.
-        $remaining = $batchSize - $landingPagesFetched;
-        if ($remaining > 0) {
-            $shopPageOffset = max(0, $offset - $landingPageCount);
+        $result = $this->sendBatchResult($events, $processed, $cursor, $sessionId, 'page', 'page sync');
+        $result['nextCursor'] = $next;
 
-            $criteria = $this->buildShopPageCriteria();
-            $criteria->setOffset($shopPageOffset);
-            $criteria->setLimit($remaining);
-
-            $shopPages = $this->categoryRepository->search($criteria, $context)->getEntities();
-            [$shopEvents, $shopProcessed] = $this->formatShopPageEvents($shopPages, $channelContexts, $sessionId);
-            $events = array_merge($events, $shopEvents);
-            $processed += $shopProcessed;
-        }
-
-        return $this->sendBatchResult($events, $processed, $offset, $sessionId, 'page', 'page sync');
+        return $result;
     }
 
     /**
@@ -500,7 +533,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
     private function sendBatchResult(
         array $events,
         int $processed,
-        int $offset,
+        int|string $offset,
         string $sessionId,
         string $batchLabel,
         string $rateLimitContext,
@@ -517,7 +550,8 @@ class SyncService implements SyncServiceInterface, ResetInterface
         ];
 
         if (!empty($errors)) {
-            $result['error'] = implode(' ', $errors);
+            // Every chunk of a batch fails the same way when Emporiqa is down: say it once.
+            $result['error'] = implode(' ', array_unique($errors));
         }
 
         return $result;
@@ -685,7 +719,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
             return $this->cachedChannelContexts;
         }
 
-        $context = Context::createCLIContext();
+        $context = SystemContext::create();
         $channelMapping = $this->channelResolver->getMapping();
         $enabledLanguages = $this->config->getEnabledLanguages();
         $enabledSalesChannels = $this->config->getEnabledSalesChannels();

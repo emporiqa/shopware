@@ -124,6 +124,42 @@ class OrderTrackingControllerTest extends TestCase
         $this->assertSame('Invalid signature', $data['error']);
     }
 
+    public function testTrackingAnswersAnOverlongIdentifierAsNotFoundWithoutALookup(): void
+    {
+        $secret = 'tracking-secret';
+        $context = $this->createSalesChannelContext('channel-5');
+        $this->config->method('isOrderTrackingEnabled')->willReturn(true);
+        $this->config->method('getWebhookSecret')->willReturn($secret);
+        $this->orderRepository->expects($this->never())->method('search');
+
+        $body = (string) json_encode(['order_identifier' => str_repeat('9', 65), 'timestamp' => time()]);
+        $request = new Request([], [], [], [], [], [], $body);
+        $request->headers->set('X-Emporiqa-Signature', WebhookClient::generateSignature($body, $secret));
+
+        $response = $this->controller->tracking($request, $context);
+
+        $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
+        $this->assertSame('Order not found.', json_decode((string) $response->getContent(), true)['error']);
+    }
+
+    public function testTrackingNeverLeaksAnExceptionMessage(): void
+    {
+        $secret = 'tracking-secret';
+        $context = $this->createSalesChannelContext('channel-5');
+        $this->config->method('isOrderTrackingEnabled')->willReturn(true);
+        $this->config->method('getWebhookSecret')->willReturn($secret);
+        $this->orderRepository->method('search')->willThrowException(new \RuntimeException('SQLSTATE[42S02] secret'));
+
+        $body = (string) json_encode(['order_identifier' => '10001', 'timestamp' => time(), 'verification_fields' => ['email' => 'a@b.c']]);
+        $request = new Request([], [], [], [], [], [], $body);
+        $request->headers->set('X-Emporiqa-Signature', WebhookClient::generateSignature($body, $secret));
+
+        $response = $this->controller->tracking($request, $context);
+
+        $this->assertSame(Response::HTTP_INTERNAL_SERVER_ERROR, $response->getStatusCode());
+        $this->assertStringNotContainsString('SQLSTATE', (string) $response->getContent());
+    }
+
     public function testTrackingReturns401ForExpiredTimestamp(): void
     {
         $secret = 'tracking-secret';

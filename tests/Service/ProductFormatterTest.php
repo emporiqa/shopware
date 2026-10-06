@@ -11,13 +11,11 @@ use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Content\Category\CategoryCollection;
 use Shopware\Core\Content\Category\CategoryEntity;
-use Shopware\Core\Content\Product\Aggregate\ProductManufacturer\ProductManufacturerEntity;
 use Shopware\Core\Content\Product\Aggregate\ProductPrice\ProductPriceCollection;
 use Shopware\Core\Content\Product\Aggregate\ProductPrice\ProductPriceEntity;
 use Shopware\Core\Content\Product\ProductCollection;
 use Shopware\Core\Content\Product\ProductEntity;
 use Shopware\Core\Defaults;
-use Shopware\Core\Framework\DataAbstractionLayer\EntityCollection;
 use Shopware\Core\Framework\DataAbstractionLayer\Pricing\Price;
 use Shopware\Core\Framework\DataAbstractionLayer\Pricing\PriceCollection;
 
@@ -100,13 +98,38 @@ class ProductFormatterTest extends TestCase
 
         $var1 = $result[1];
         $this->assertSame('variation-var-001', $var1['identification_number']);
-        $this->assertFalse($var1['is_parent']);
         $this->assertSame('PARENT-SKU', $var1['parent_sku']);
 
         $var2 = $result[2];
         $this->assertSame('variation-var-002', $var2['identification_number']);
-        $this->assertFalse($var2['is_parent']);
         $this->assertSame('PARENT-SKU', $var2['parent_sku']);
+    }
+
+    /**
+     * Emporiqa stores a variation as a lean row that inherits descriptions,
+     * categories and brands from its parent and fixes variation_attributes
+     * and is_parent, so a variation payload never carries them. Parents and
+     * simple products keep every field.
+     */
+    public function testVariationPayloadOmitsFieldsTheParentOwns(): void
+    {
+        $children = new ProductCollection([$this->createVariantProduct('var-001', 'Variant 1', 'VAR-SKU-001')]);
+        $product = $this->createSimpleProduct('parent-001', 'Parent Product', 'PARENT-SKU', children: $children);
+
+        [$parent, $variation] = $this->formatter->formatProduct($product, $this->defaultChannelContexts, 'session-1');
+
+        foreach (['descriptions', 'categories', 'brands', 'variation_attributes', 'is_parent'] as $key) {
+            $this->assertArrayNotHasKey($key, $variation, $key);
+            $this->assertArrayHasKey($key, $parent, $key);
+        }
+        foreach (['identification_number', 'sku', 'parent_sku', 'channels', 'names', 'links', 'attributes', 'prices', 'availability_statuses', 'stock_quantities', 'images', 'min_order_quantities', 'max_order_quantities', 'available_for_order', 'condition', 'is_virtual', 'sync_session_id'] as $key) {
+            $this->assertArrayHasKey($key, $variation, $key);
+        }
+
+        $simple = $this->formatter->formatProduct($this->createSimpleProduct('prod-001', 'Simple', 'SKU-001'), $this->defaultChannelContexts)[0];
+        foreach (['descriptions', 'categories', 'brands', 'variation_attributes', 'is_parent'] as $key) {
+            $this->assertArrayHasKey($key, $simple, $key);
+        }
     }
 
     public function testFormatProductAvailabilityForSimpleProduct(): void
@@ -554,6 +577,7 @@ class ProductFormatterTest extends TestCase
         $visibility = $this->createMock(\Shopware\Core\Content\Product\Aggregate\ProductVisibility\ProductVisibilityEntity::class);
         $visibility->method('getUniqueIdentifier')->willReturn('vis-1');
         $visibility->method('getSalesChannelId')->willReturn('sc-1');
+        $visibility->method('getVisibility')->willReturn(30);
 
         $visibilities = new \Shopware\Core\Content\Product\Aggregate\ProductVisibility\ProductVisibilityCollection([$visibility]);
 
@@ -597,6 +621,7 @@ class ProductFormatterTest extends TestCase
         $visibility = $this->createMock(\Shopware\Core\Content\Product\Aggregate\ProductVisibility\ProductVisibilityEntity::class);
         $visibility->method('getUniqueIdentifier')->willReturn('vis-2');
         $visibility->method('getSalesChannelId')->willReturn('sc-2');
+        $visibility->method('getVisibility')->willReturn(30);
         $visibilities = new \Shopware\Core\Content\Product\Aggregate\ProductVisibility\ProductVisibilityCollection([$visibility]);
 
         $product = $this->createMock(ProductEntity::class);
@@ -652,6 +677,58 @@ class ProductFormatterTest extends TestCase
 
         // Product not visible in sc-1 → empty result
         $this->assertCount(0, $result);
+    }
+
+    /**
+     * A product assigned to no sales channel is shown by no storefront, so it
+     * is never synced (an empty, loaded visibility list is not "unknown").
+     */
+    public function testProductInNoSalesChannelIsNotSynced(): void
+    {
+        $product = $this->createMock(ProductEntity::class);
+        $product->method('getId')->willReturn('prod-nowhere');
+        $product->method('getProductNumber')->willReturn('SKU-NOWHERE');
+        $product->method('getChildren')->willReturn(null);
+        $product->method('getVisibilities')->willReturn(new \Shopware\Core\Content\Product\Aggregate\ProductVisibility\ProductVisibilityCollection());
+
+        $this->assertSame([], $this->formatter->formatProduct($product, $this->defaultChannelContexts));
+        $this->assertSame([], $this->formatter->formatAvailabilityEvents($product, $this->defaultChannelContexts));
+    }
+
+    /**
+     * "Hide in listings and search" hides a product from the storefront's search and listings,
+     * so the chat (a search) must not offer it either; "Hide in listings"
+     * still lets search find it, so it stays.
+     */
+    public function testLinkOnlyProductIsNotSyncedButSearchVisibleIs(): void
+    {
+        $linkOnly = $this->createSimpleProduct('prod-link', 'Link only', 'SKU-LINK', visibilities: $this->visibilities(['sc-1' => 10]));
+        $this->assertSame([], $this->formatter->formatProduct($linkOnly, $this->defaultChannelContexts));
+        $this->assertSame([], $this->formatter->formatAvailabilityEvents($linkOnly, $this->defaultChannelContexts));
+
+        $searchOnly = $this->createSimpleProduct('prod-search', 'Hidden in listings', 'SKU-SEARCH', visibilities: $this->visibilities(['sc-1' => 20]));
+        $result = $this->formatter->formatProduct($searchOnly, $this->defaultChannelContexts);
+        $this->assertCount(1, $result);
+        $this->assertSame([''], $result[0]['channels']);
+    }
+
+    public function testProductIsSyncedOnlyToTheChannelsWhereSearchFindsIt(): void
+    {
+        $product = $this->createSimpleProduct('prod-mixed', 'Mixed', 'SKU-MIXED', visibilities: $this->visibilities(['sc-1' => 30, 'sc-2' => 10]));
+        $contexts = [
+            'retail' => [
+                ['languageCode' => 'en', 'domainUrl' => 'https://shop.com', 'currencyIso' => 'EUR', 'currencyId' => 'curr-eur', 'salesChannelId' => 'sc-1', 'languageId' => 'l1'],
+            ],
+            'b2b' => [
+                ['languageCode' => 'en', 'domainUrl' => 'https://b2b.com', 'currencyIso' => 'EUR', 'currencyId' => 'curr-eur', 'salesChannelId' => 'sc-2', 'languageId' => 'l1'],
+            ],
+        ];
+
+        $result = $this->formatter->formatProduct($product, $contexts);
+
+        $this->assertCount(1, $result);
+        $this->assertSame(['retail'], $result[0]['channels']);
+        $this->assertSame(['retail'], array_keys($result[0]['links']));
     }
 
     public function testCategoriesMultiLanguage(): void
@@ -865,7 +942,9 @@ class ProductFormatterTest extends TestCase
     public function testTierPricesFromRulesGuestsDoNotMatchAreNeverPublished(): void
     {
         $tierRows = new ProductPriceCollection([
+            $this->createTierRow('public-1', 1, 39.99, 33.60),
             $this->createTierRow('public-5', 5, 35.99, 30.24),
+            $this->createTierRow('dealer-1', 1, 25.00, 21.01, ruleId: self::DEALER_RULE),
             $this->createTierRow('dealer-5', 5, 20.00, 16.81, ruleId: self::DEALER_RULE),
             $this->createTierRow('dealer-50', 50, 15.00, 12.61, ruleId: self::DEALER_RULE),
         ]);
@@ -874,12 +953,14 @@ class ProductFormatterTest extends TestCase
 
         $result = $this->formatter->formatProduct($product, $this->defaultChannelContexts);
 
+        $this->assertSame(39.99, $result[0]['prices'][''][0]['current_price']);
         $this->assertSame([['min_quantity' => 5, 'price' => 35.99]], $result[0]['prices'][''][0]['tier_prices']);
     }
 
     public function testOnlyRestrictedRulePricesMeansNoTierPrices(): void
     {
         $tierRows = new ProductPriceCollection([
+            $this->createTierRow('dealer-1', 1, 25.00, 21.01, ruleId: self::DEALER_RULE),
             $this->createTierRow('dealer-10', 10, 20.00, 16.81, ruleId: self::DEALER_RULE),
         ]);
 
@@ -887,6 +968,7 @@ class ProductFormatterTest extends TestCase
 
         $result = $this->formatter->formatProduct($product, $this->defaultChannelContexts);
 
+        $this->assertSame(39.99, $result[0]['prices'][''][0]['current_price']);
         $this->assertArrayNotHasKey('tier_prices', $result[0]['prices'][''][0]);
     }
 
@@ -901,7 +983,9 @@ class ProductFormatterTest extends TestCase
         $formatter = new ProductFormatter($this->config, $resolver);
 
         $tierRows = new ProductPriceCollection([
+            $this->createTierRow('sale-1', 1, 38.00, 31.93, ruleId: 'rule-sale'),
             $this->createTierRow('sale-10', 10, 32.00, 26.89, ruleId: 'rule-sale'),
+            $this->createTierRow('public-1', 1, 39.99, 33.60),
             $this->createTierRow('public-5', 5, 35.99, 30.24),
         ]);
 
@@ -909,6 +993,7 @@ class ProductFormatterTest extends TestCase
 
         $result = $formatter->formatProduct($product, $this->defaultChannelContexts);
 
+        $this->assertSame(38.00, $result[0]['prices'][''][0]['current_price']);
         $this->assertSame([['min_quantity' => 10, 'price' => 32.00]], $result[0]['prices'][''][0]['tier_prices']);
     }
 
@@ -944,6 +1029,7 @@ class ProductFormatterTest extends TestCase
         // pair is always included so the store's "Show tax info" dashboard
         // toggle can render the breakdown. Tiers use gross too.
         $tierRows = new ProductPriceCollection([
+            $this->createTierRow('tier-base', 1, 39.99, 33.60),
             $this->createTierRow('tier-tax', 5, 35.99, 30.24),
         ]);
 
@@ -979,6 +1065,7 @@ class ProductFormatterTest extends TestCase
     {
         $contexts = ['' => [['languageCode' => 'en', 'domainUrl' => 'https://shop.example.com', 'currencyIso' => 'USD', 'currencyId' => 'curr-usd', 'currencyFactor' => '1.17085', 'currencyDecimals' => '2', 'currencyInterval' => '0.01', 'salesChannelId' => 'sc-1', 'languageId' => 'lang-en']]];
         $tierRows = new ProductPriceCollection([
+            $this->createTierRow('public-1', 1, 5496.00, 4618.49, currencyId: Defaults::CURRENCY, listPrice: new Price(Defaults::CURRENCY, 5041.18, 5999.00, false)),
             $this->createTierRow('public-5', 5, 4999.00, 4200.84, currencyId: Defaults::CURRENCY),
         ]);
         $product = $this->createSimpleProduct(
@@ -1006,6 +1093,7 @@ class ProductFormatterTest extends TestCase
     {
         $contexts = ['' => [['languageCode' => 'en', 'domainUrl' => 'https://shop.example.com', 'currencyIso' => 'USD', 'currencyId' => 'curr-usd', 'currencyFactor' => '1.17085', 'currencyDecimals' => '2', 'currencyInterval' => '0.01', 'salesChannelId' => 'sc-1', 'languageId' => 'lang-en']]];
         $tierRows = new ProductPriceCollection([
+            $this->createTierRow('public-1', 1, 5999.00, 5041.18, currencyId: 'curr-usd'),
             $this->createTierRow('public-5', 5, 5500.00, 4621.85, currencyId: 'curr-usd'),
         ]);
         $product = $this->createSimpleProduct('prod-own', 'Own USD', 'SKU-OWN', grossPrice: 5999.00, netPrice: 5041.18, tierPrices: $tierRows, priceCurrencyId: 'curr-usd');
@@ -1038,6 +1126,7 @@ class ProductFormatterTest extends TestCase
     public function testConvertedPricesUseTheCurrencyCashRoundingInterval(): void
     {
         $tierRows = new ProductPriceCollection([
+            $this->createTierRow('public-1', 1, 99.99, 84.03, currencyId: Defaults::CURRENCY),
             $this->createTierRow('public-5', 5, 90.00, 75.63, currencyId: Defaults::CURRENCY),
         ]);
         $product = $this->createSimpleProduct('prod-chf', 'CHF', 'SKU-CHF', grossPrice: 99.99, netPrice: 84.03, tierPrices: $tierRows, priceCurrencyId: Defaults::CURRENCY);
@@ -1079,6 +1168,131 @@ class ProductFormatterTest extends TestCase
 
         $this->assertSame(39.99, $result[0]['prices'][''][0]['current_price']);
         $this->assertSame(33.60, $result[0]['prices'][''][0]['price_excl_tax']);
+    }
+
+    /**
+     * When a guest's rule has advanced prices, Shopware charges the lowest
+     * quantity row for one unit and ignores the product's own price and list
+     * price. Sending product.price made the chat quote a price the cart never
+     * charges.
+     */
+    public function testGuestRuleQuantityOneRowIsTheCurrentPrice(): void
+    {
+        $tierRows = new ProductPriceCollection([
+            $this->createTierRow('public-10', 10, 80.00, 67.23),
+            $this->createTierRow('public-1', 1, 90.00, 75.63),
+        ]);
+        $product = $this->createSimpleProduct(
+            'prod-rule-base',
+            'Rule base',
+            'SKU-RB',
+            grossPrice: 100.00,
+            netPrice: 84.03,
+            tierPrices: $tierRows,
+            listPrice: new Price('curr-eur', 100.84, 120.00, false),
+        );
+
+        $priceEntry = $this->formatter->formatProduct($product, $this->defaultChannelContexts)[0]['prices'][''][0];
+
+        $this->assertSame(90.00, $priceEntry['current_price']);
+        $this->assertSame(90.00, $priceEntry['regular_price']);
+        $this->assertSame(90.00, $priceEntry['price_incl_tax']);
+        $this->assertSame(75.63, $priceEntry['price_excl_tax']);
+        $this->assertSame([['min_quantity' => 10, 'price' => 80.00]], $priceEntry['tier_prices']);
+    }
+
+    public function testGuestRuleListPriceIsTheRegularPrice(): void
+    {
+        $tierRows = new ProductPriceCollection([
+            $this->createTierRow('public-1', 1, 90.00, 75.63, listPrice: new Price('curr-eur', 92.44, 110.00, false)),
+        ]);
+        $product = $this->createSimpleProduct('prod-rule-list', 'Rule list', 'SKU-RL', grossPrice: 100.00, netPrice: 84.03, tierPrices: $tierRows);
+
+        $priceEntry = $this->formatter->formatProduct($product, $this->defaultChannelContexts)[0]['prices'][''][0];
+
+        $this->assertSame(90.00, $priceEntry['current_price']);
+        $this->assertSame(110.00, $priceEntry['regular_price']);
+        $this->assertArrayNotHasKey('tier_prices', $priceEntry);
+    }
+
+    /**
+     * The cart prices a quantity with the first row whose range covers it, so
+     * a rule whose rows start above 1 (possible through the API) charges its
+     * first row for a single unit as well.
+     */
+    public function testGuestRuleWhoseRowsStartAboveOneChargesTheFirstRowForOneUnit(): void
+    {
+        $tierRows = new ProductPriceCollection([
+            $this->createTierRow('public-5', 5, 35.99, 30.24),
+            $this->createTierRow('public-10', 10, 30.00, 25.21),
+        ]);
+        $product = $this->createSimpleProduct('prod-rule-5', 'Rule 5', 'SKU-R5', grossPrice: 39.99, netPrice: 33.60, tierPrices: $tierRows);
+
+        $priceEntry = $this->formatter->formatProduct($product, $this->defaultChannelContexts)[0]['prices'][''][0];
+
+        $this->assertSame(35.99, $priceEntry['current_price']);
+        $this->assertSame([['min_quantity' => 10, 'price' => 30.00]], $priceEntry['tier_prices']);
+    }
+
+    /**
+     * Products are loaded without inheritance, so a variant that inherits the
+     * parent's price reads null. It used to ship with no price at all.
+     */
+    public function testVariantWithoutOwnPriceInheritsTheParentPrice(): void
+    {
+        $variant = $this->createVariantProduct('var-inherit', 'Variant', 'VAR-INH');
+        $product = $this->createSimpleProduct('parent-inherit', 'Parent', 'PAR-INH', children: new ProductCollection([$variant]), grossPrice: 39.99, netPrice: 33.60);
+
+        $result = $this->formatter->formatProduct($product, $this->defaultChannelContexts);
+
+        $this->assertSame(39.99, $result[1]['prices'][''][0]['current_price']);
+        $this->assertSame(33.60, $result[1]['prices'][''][0]['price_excl_tax']);
+    }
+
+    public function testVariantOwnPriceWinsOverTheParentPrice(): void
+    {
+        $variant = $this->createVariantProduct('var-own', 'Variant', 'VAR-OWN', price: new PriceCollection([new Price('curr-eur', 42.02, 50.00, false)]));
+        $product = $this->createSimpleProduct('parent-own', 'Parent', 'PAR-OWN', children: new ProductCollection([$variant]), grossPrice: 39.99, netPrice: 33.60);
+
+        $result = $this->formatter->formatProduct($product, $this->defaultChannelContexts);
+
+        $this->assertSame(39.99, $result[0]['prices'][''][0]['current_price']);
+        $this->assertSame(50.00, $result[1]['prices'][''][0]['current_price']);
+    }
+
+    /**
+     * Shopware inherits price and advanced prices separately: a variant with
+     * its own price but no advanced prices is priced by the parent's.
+     */
+    public function testVariantWithoutOwnAdvancedPricesInheritsTheParentRules(): void
+    {
+        $parentRows = new ProductPriceCollection([
+            $this->createTierRow('public-1', 1, 38.00, 31.93),
+            $this->createTierRow('public-10', 10, 30.00, 25.21),
+        ]);
+        $variant = $this->createVariantProduct('var-rules', 'Variant', 'VAR-RUL', price: new PriceCollection([new Price('curr-eur', 42.02, 50.00, false)]));
+        $product = $this->createSimpleProduct('parent-rules', 'Parent', 'PAR-RUL', children: new ProductCollection([$variant]), grossPrice: 39.99, netPrice: 33.60, tierPrices: $parentRows);
+
+        $priceEntry = $this->formatter->formatProduct($product, $this->defaultChannelContexts)[1]['prices'][''][0];
+
+        $this->assertSame(38.00, $priceEntry['current_price']);
+        $this->assertSame([['min_quantity' => 10, 'price' => 30.00]], $priceEntry['tier_prices']);
+    }
+
+    public function testVariantOwnAdvancedPricesReplaceTheParentRules(): void
+    {
+        $parentRows = new ProductPriceCollection([$this->createTierRow('public-1', 1, 38.00, 31.93)]);
+        $variantRows = new ProductPriceCollection([
+            $this->createTierRow('var-1', 1, 45.00, 37.82),
+            $this->createTierRow('var-5', 5, 41.00, 34.45),
+        ]);
+        $variant = $this->createVariantProduct('var-ownrules', 'Variant', 'VAR-OR', rulePrices: $variantRows);
+        $product = $this->createSimpleProduct('parent-ownrules', 'Parent', 'PAR-OR', children: new ProductCollection([$variant]), grossPrice: 39.99, netPrice: 33.60, tierPrices: $parentRows);
+
+        $priceEntry = $this->formatter->formatProduct($product, $this->defaultChannelContexts)[1]['prices'][''][0];
+
+        $this->assertSame(45.00, $priceEntry['current_price']);
+        $this->assertSame([['min_quantity' => 5, 'price' => 41.00]], $priceEntry['tier_prices']);
     }
 
     public function testNoTierPricesKeyWhenPricesNotLoaded(): void
@@ -1194,16 +1408,33 @@ class ProductFormatterTest extends TestCase
         $this->assertSame(['retail', 'b2b'], array_keys($events[0]['availability_statuses']));
     }
 
-    private function createTierRow(string $id, int $quantityStart, float $gross, float $net, string $currencyId = 'curr-eur', string $ruleId = self::PUBLIC_RULE): ProductPriceEntity
+    private function createTierRow(string $id, int $quantityStart, float $gross, float $net, string $currencyId = 'curr-eur', string $ruleId = self::PUBLIC_RULE, ?Price $listPrice = null): ProductPriceEntity
     {
         $row = new ProductPriceEntity();
         $row->setId(str_pad($id, 32, '0'));
         $row->setUniqueIdentifier($id);
         $row->setRuleId($ruleId);
         $row->setQuantityStart($quantityStart);
-        $row->setPrice(new PriceCollection([new Price($currencyId, $net, $gross, false)]));
+        $row->setPrice(new PriceCollection([new Price($currencyId, $net, $gross, false, $listPrice)]));
 
         return $row;
+    }
+
+    /**
+     * @param array<string, int> $levelBySalesChannel
+     */
+    private function visibilities(array $levelBySalesChannel): \Shopware\Core\Content\Product\Aggregate\ProductVisibility\ProductVisibilityCollection
+    {
+        $collection = new \Shopware\Core\Content\Product\Aggregate\ProductVisibility\ProductVisibilityCollection();
+        foreach ($levelBySalesChannel as $salesChannelId => $level) {
+            $visibility = new \Shopware\Core\Content\Product\Aggregate\ProductVisibility\ProductVisibilityEntity();
+            $visibility->setId('vis-' . $salesChannelId);
+            $visibility->setSalesChannelId($salesChannelId);
+            $visibility->setVisibility($level);
+            $collection->add($visibility);
+        }
+
+        return $collection;
     }
 
     private function createSimpleProduct(
@@ -1280,6 +1511,8 @@ class ProductFormatterTest extends TestCase
         ?bool $active = null,
         ?int $minPurchase = null,
         ?int $maxPurchase = null,
+        ?PriceCollection $price = null,
+        ?ProductPriceCollection $rulePrices = null,
     ): ProductEntity&MockObject {
         $variant = $this->createMock(ProductEntity::class);
         $variant->method('getId')->willReturn($id);
@@ -1297,8 +1530,8 @@ class ProductFormatterTest extends TestCase
         $variant->method('getMedia')->willReturn(null);
         $variant->method('getCover')->willReturn(null);
         $variant->method('getCurrencyPrice')->willReturn(null);
-        $variant->method('getPrice')->willReturn(null);
-        $variant->method('getPrices')->willReturn(null);
+        $variant->method('getPrice')->willReturn($price);
+        $variant->method('getPrices')->willReturn($rulePrices ?? new ProductPriceCollection());
         $variant->method('getOptions')->willReturn(null);
         $variant->method('getTranslations')->willReturn(null);
         $variant->method('getAvailable')->willReturn($stock > 0);

@@ -13,7 +13,6 @@ use Emporiqa\ShopwarePlugin\Service\SyncServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\WebhookClientInterface;
 use Shopware\Core\Content\Category\CategoryCollection;
 use Shopware\Core\Content\LandingPage\LandingPageCollection;
-use Shopware\Core\Content\LandingPage\LandingPageEntity;
 use Shopware\Core\Content\Product\ProductCollection;
 use Shopware\Core\Content\Product\ProductEntity;
 use Shopware\Core\Content\Property\PropertyGroupCollection;
@@ -36,7 +35,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
 
-#[Route(defaults: ['_routeScope' => ['api']])]
+#[Route(defaults: ['_routeScope' => ['api'], '_acl' => ['system.plugin_maintain']])]
 class SyncController extends AbstractController
 {
     /** Prefix for per-session guard rows holding batch stats for the driven admin bulk sync. */
@@ -179,7 +178,8 @@ class SyncController extends AbstractController
     }
 
     /**
-     * Process a single page of a driven admin bulk-sync session. Presumes
+     * Process one batch of a driven admin bulk-sync session (keyset paging:
+     * the answer's nextCursor is sent back for the next batch). Presumes
      * failure before running the batch (so a fatal error mid-batch still
      * poisons the session guard) and reverses the mark on success.
      */
@@ -189,7 +189,10 @@ class SyncController extends AbstractController
         $body = json_decode($request->getContent(), true);
         $entity = (\is_array($body) && isset($body['entity']) && \is_string($body['entity'])) ? $body['entity'] : '';
         $sessionId = (\is_array($body) && isset($body['sessionId']) && \is_string($body['sessionId'])) ? $body['sessionId'] : '';
-        $page = (\is_array($body) && isset($body['page'])) ? max(1, (int) $body['page']) : 1;
+        $cursor = (\is_array($body) && \is_string($body['cursor'] ?? null)) ? $body['cursor'] : '';
+        if (!preg_match('/^(?:(?:landing|shop):)?(?:[0-9a-f]{32})?$/D', $cursor)) {
+            return new JsonResponse(['success' => false, 'error' => 'Invalid cursor.'], JsonResponse::HTTP_BAD_REQUEST);
+        }
 
         $guard = $this->readSyncSessionGuard($sessionId);
         if ($guard === null || $guard['entity'] !== $entity) {
@@ -200,7 +203,7 @@ class SyncController extends AbstractController
         $this->writeSyncSessionGuardData($sessionId, $guard);
 
         try {
-            $result = $this->syncService->syncBatch($entity, $page, $sessionId, $guard['batchSize']);
+            $result = $this->syncService->syncBatch($entity, $cursor, $sessionId, $guard['batchSize']);
         } catch (\Throwable $e) {
             return new JsonResponse([
                 'success' => false,
@@ -411,6 +414,7 @@ class SyncController extends AbstractController
             $productCriteria->addAssociation('properties.group.translations');
             $productCriteria->addAssociation('properties.translations');
             $productCriteria->addAssociation('visibilities');
+            $productCriteria->addAssociation('prices');
             $productCriteria->setLimit(1);
 
             $childrenCriteria = $productCriteria->getAssociation('children');
@@ -421,6 +425,7 @@ class SyncController extends AbstractController
             $childrenCriteria->addAssociation('media.media');
             $childrenCriteria->addAssociation('cover.media');
             $childrenCriteria->addAssociation('seoUrls');
+            $childrenCriteria->addAssociation('prices');
 
             $product = $this->productRepository->search($productCriteria, $context)->getEntities()->first();
             if ($product instanceof ProductEntity) {
@@ -674,10 +679,11 @@ class SyncController extends AbstractController
                 'channelMapping', 'brandAttribute', 'orderCompletedStates',
                 'storeId', 'webhookSecret', 'webhookUrl',
                 'syncProducts', 'syncPages', 'batchSize', 'enabledLanguages', 'enabledSalesChannels',
+                'orderTracking',
             ];
 
             $booleanKeys = [
-                'syncProducts', 'syncPages',
+                'syncProducts', 'syncPages', 'orderTracking',
             ];
             $integerKeys = ['batchSize'];
 

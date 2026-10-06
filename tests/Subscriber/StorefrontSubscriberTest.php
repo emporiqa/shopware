@@ -136,6 +136,9 @@ class StorefrontSubscriberTest extends TestCase
         $this->subscriber->onStorefrontRender($event);
     }
 
+    /**
+     * A page in an unticked language shows no chat, as with an unticked sales channel.
+     */
     public function testOnStorefrontRenderSkipsWhenStorefrontLanguageIsNotEnabled(): void
     {
         $this->config->method('isConfigured')->willReturn(true);
@@ -149,6 +152,27 @@ class StorefrontSubscriberTest extends TestCase
         $event->method('getSalesChannelContext')->willReturn($salesChannelContext);
         $event->method('getRequest')->willReturn(new Request());
         $event->expects($this->never())->method('setParameter');
+
+        $this->subscriber->onStorefrontRender($event);
+    }
+
+    public function testDomainPathPrefixesTheStorefrontUrls(): void
+    {
+        $this->config->method('isConfigured')->willReturn(true);
+        $this->config->method('getStoreId')->willReturn('store-abc');
+        $this->config->method('getWebhookUrl')->willReturn('https://emporiqa.com/webhooks/sync/');
+        $this->channelResolver->method('resolveChannelKey')->willReturn('');
+
+        $request = new Request();
+        $request->attributes->set('sw-storefront-url', 'https://shop.example/de');
+
+        $event = $this->createMock(StorefrontRenderEvent::class);
+        $event->method('getSalesChannelContext')->willReturn($this->createSalesChannelContext('channel-1'));
+        $event->method('getRequest')->willReturn($request);
+        $event->expects($this->once())
+            ->method('setParameter')
+            ->with('emporiqaConfig', $this->callback(fn (array $config) => $config['userTokenUrl'] === '/de/emporiqa/api/user-token'
+                && $config['cartApiUrl'] === '/de/emporiqa/api/cart'));
 
         $this->subscriber->onStorefrontRender($event);
     }

@@ -39,18 +39,28 @@ interface SyncServiceInterface
     public function countItems(string $entity): int;
 
     /**
-     * Process a single page of an entity's driven bulk sync.
+     * Process one batch of an entity's driven bulk sync.
      *
-     * Uses the same criteria/ordering (id ASC) as the full sync loops, offset
-     * by (page - 1) * batch size. For 'pages', pages across landing pages
-     * first, then shop-page categories, using one continuous offset.
+     * Same criteria and id order as the full sync loops, paged by id after
+     * $cursor (keyset), never by offset. For 'pages', landing pages first,
+     * then shop-page categories.
      *
      * @param string $entity 'products' or 'pages'
-     * @param int $page 1-based page number
+     * @param string $cursor '' for the first batch, then the previous answer's nextCursor
      * @param string $sessionId Sync session id to stamp onto formatted events
      * @param int|null $batchSize Page size pinned at session start; null falls back to the current config value
      *
-     * @return array{success: bool, processed: int, events: int, error?: string}
+     * @return array{success: bool, processed: int, events: int, error?: string, nextCursor: ?string}
      */
-    public function syncBatch(string $entity, int $page, string $sessionId, ?int $batchSize = null): array;
+    public function syncBatch(string $entity, string $cursor, string $sessionId, ?int $batchSize = null): array;
+
+    /**
+     * Send product.updated for these parent (or simple) products now, outside
+     * any sync session. Inactive or unknown ids are skipped.
+     *
+     * @param list<string> $productIds
+     *
+     * @return int products sent
+     */
+    public function resyncProducts(array $productIds): int;
 }

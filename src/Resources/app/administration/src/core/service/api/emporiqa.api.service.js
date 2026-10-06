@@ -36,9 +36,9 @@ class EmporiqaApiService extends ApiService {
             .then((response) => ApiService.handleResponse(response));
     }
 
-    syncBatch(entity, sessionId, page) {
+    syncBatch(entity, sessionId, cursor) {
         return this.httpClient
-            .post('/_action/emporiqa/sync-batch', { entity, sessionId, page }, { headers: this.getBasicHeaders() })
+            .post('/_action/emporiqa/sync-batch', { entity, sessionId, cursor }, { headers: this.getBasicHeaders() })
             .then((response) => ApiService.handleResponse(response));
     }
 
@@ -81,6 +81,12 @@ class EmporiqaApiService extends ApiService {
     connectExchange(code, state) {
         return this.httpClient
             .post('/_action/emporiqa/connect/exchange', { code, state }, { headers: this.getBasicHeaders() })
+            .then((response) => ApiService.handleResponse(response));
+    }
+
+    actionsUrl(origin) {
+        return this.httpClient
+            .post('/_action/emporiqa/actions-url', { origin }, { headers: this.getBasicHeaders() })
             .then((response) => ApiService.handleResponse(response));
     }
 

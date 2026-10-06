@@ -81,6 +81,8 @@ class ProductSubscriberTest extends TestCase
         $this->assertSame('onProductAssociationDeleted', $events['product_media.deleted']);
         $this->assertSame('onProductAssociationWritten', $events['product_price.written']);
         $this->assertSame('onProductAssociationDeleted', $events['product_price.deleted']);
+        $this->assertSame('onProductAssociationWritten', $events['product_visibility.written']);
+        $this->assertSame('onProductAssociationDeleted', $events['product_visibility.deleted']);
         $this->assertSame('onStockAltered', $events[ProductStockAlteredEvent::class]);
         $this->assertSame('onWriteFinished', $events[EntityWrittenContainerEvent::class]);
     }
@@ -329,6 +331,34 @@ class ProductSubscriberTest extends TestCase
                     && $message->getEvents()[0]['data']['identification_number'] === 'variation-' . $variantId;
             }))
             ->willReturn(new Envelope(new \stdClass()));
+
+        $this->subscriber->onProductWritten($event);
+    }
+
+    /**
+     * A variant inherits its visibilities: read without inheritance (an admin
+     * or CLI write) they are empty and the variant reads as in no sales
+     * channel, which silently dropped every stock change of a variant.
+     */
+    public function testAvailabilityProductIsReadWithInheritance(): void
+    {
+        $this->configureEnabled();
+        $variantId = Uuid::randomHex();
+
+        $context = $this->createLiveContext();
+        $context->method('considerInheritance')->willReturn(false);
+        $context->expects($this->once())->method('enableInheritance');
+
+        $event = $this->createMock(EntityWrittenEvent::class);
+        $event->method('getContext')->willReturn($context);
+        $event->method('getWriteResults')->willReturn([
+            $this->createUpdateResult($variantId, ['id' => $variantId, 'stock' => 2]),
+        ]);
+
+        $variant = $this->createMock(ProductEntity::class);
+        $variant->method('getParentId')->willReturn(Uuid::randomHex());
+        $this->mockRepositorySearchReturns($variant);
+        $this->productFormatter->expects($this->once())->method('formatAvailabilityEvents')->with($this->identicalTo($variant))->willReturn([]);
 
         $this->subscriber->onProductWritten($event);
     }
@@ -676,6 +706,121 @@ class ProductSubscriberTest extends TestCase
         $this->subscriber->onProductAssociationDeleted($deletedEvent);
     }
 
+    /**
+     * A product saved without any sales channel showing it (all removed, or
+     * set to "Hide in listings and search") must leave Emporiqa at once, with its variants,
+     * not linger until the next full sync.
+     */
+    public function testActiveProductNoSalesChannelShowsIsDeletedWithItsVariants(): void
+    {
+        $this->configureEnabled();
+        $productId = Uuid::randomHex();
+        $variantId = Uuid::randomHex();
+
+        $variant = $this->createMock(ProductEntity::class);
+        $variant->method('getId')->willReturn($variantId);
+        $variant->method('getUniqueIdentifier')->willReturn($variantId);
+        $product = $this->createMock(ProductEntity::class);
+        $product->method('getActive')->willReturn(true);
+        $product->method('getChildren')->willReturn(new \Shopware\Core\Content\Product\ProductCollection([$variant]));
+        $this->mockRepositorySearchReturns($product);
+
+        $this->productFormatter->method('formatProduct')->willReturn([]);
+        $this->productFormatter->method('formatProductDelete')->willReturn([
+            ['identification_number' => 'product-' . $productId],
+        ]);
+        $this->eventDispatcher->expects($this->never())->method('dispatch');
+
+        $this->messageBus
+            ->expects($this->once())
+            ->method('dispatch')
+            ->with($this->callback(fn ($message) => $message instanceof WebhookMessage && $message->getEvents() === [
+                ['type' => 'product.deleted', 'data' => ['identification_number' => 'product-' . $productId]],
+                ['type' => 'product.deleted', 'data' => ['identification_number' => 'variation-' . $variantId]],
+            ]))
+            ->willReturn(new Envelope(new \stdClass()));
+
+        $event = $this->createWrittenEvent([
+            $this->createUpdateResult($productId, ['id' => $productId, 'updatedAt' => '2026-10-06']),
+        ]);
+        $this->subscriber->onProductWritten($event);
+    }
+
+    /**
+     * Changing an existing visibility (e.g. to "Hide in listings and search") writes only the
+     * product_visibility row, whose update payload has no productId.
+     */
+    public function testVisibilityUpdateWithoutProductIdLooksUpTheProduct(): void
+    {
+        $this->configureEnabled();
+        $rowId = Uuid::randomHex();
+        $productId = Uuid::randomHex();
+
+        $writeResult = $this->createMock(EntityWriteResult::class);
+        $writeResult->method('getPayload')->willReturn(['id' => $rowId, 'visibility' => 10]);
+        $writeResult->method('getPrimaryKey')->willReturn($rowId);
+
+        $event = $this->createMock(EntityWrittenEvent::class);
+        $event->method('getEntityName')->willReturn('product_visibility');
+        $event->method('getContext')->willReturn($this->createLiveContext());
+        $event->method('getWriteResults')->willReturn([$writeResult]);
+
+        $this->connection
+            ->expects($this->once())
+            ->method('fetchAllKeyValue')
+            ->with($this->stringContains('FROM `product_visibility`'))
+            ->willReturn([$rowId => $productId]);
+
+        $this->mockLoadedProduct(active: true);
+        $this->productFormatter->method('formatProduct')->willReturn([['identification_number' => 'product-' . $productId]]);
+
+        $this->messageBus
+            ->expects($this->once())
+            ->method('dispatch')
+            ->with($this->callback(fn ($message) => $message->getEvents()[0]['type'] === 'product.updated'))
+            ->willReturn(new Envelope(new \stdClass()));
+
+        $this->subscriber->onProductAssociationWritten($event);
+    }
+
+    public function testRemovedVisibilityQueuesTheProductForCapturedProductId(): void
+    {
+        $this->configureEnabled();
+        $rowId = Uuid::randomHex();
+        $productId = Uuid::randomHex();
+        $context = $this->createLiveContext();
+
+        $deleteEvent = $this->createMock(EntityDeleteEvent::class);
+        $deleteEvent->method('getContext')->willReturn($context);
+        $deleteEvent->method('getIds')->willReturnCallback(
+            fn (string $entity) => $entity === 'product_visibility' ? [['id' => $rowId]] : [],
+        );
+        $this->connection->method('fetchAllKeyValue')->willReturn([$rowId => $productId]);
+        $this->subscriber->onEntityDelete($deleteEvent);
+
+        $this->mockLoadedProduct(active: true);
+        $this->productFormatter->method('formatProduct')->willReturn([]);
+        $this->productFormatter->method('formatProductDelete')->willReturn([['identification_number' => 'product-' . $productId]]);
+
+        $this->messageBus
+            ->expects($this->once())
+            ->method('dispatch')
+            ->with($this->callback(fn ($message) => $message->getEvents()[0] === [
+                'type' => 'product.deleted',
+                'data' => ['identification_number' => 'product-' . $productId],
+            ]))
+            ->willReturn(new Envelope(new \stdClass()));
+
+        $writeResult = $this->createMock(EntityWriteResult::class);
+        $writeResult->method('getPrimaryKey')->willReturn($rowId);
+        $deletedEvent = $this->createMock(EntityDeletedEvent::class);
+        $deletedEvent->method('getEntityName')->willReturn('product_visibility');
+        $deletedEvent->method('getContext')->willReturn($context);
+        $deletedEvent->method('getWriteResults')->willReturn([$writeResult]);
+
+        $this->subscriber->onProductAssociationDeleted($deletedEvent);
+    }
+
     public function testProductMediaDeletedWithoutCapturedMappingDispatchesNothing(): void
     {
         $this->configureEnabled();
@@ -803,6 +948,7 @@ class ProductSubscriberTest extends TestCase
         $context = $this->createMock(Context::class);
         $context->method('getVersionId')->willReturn(Defaults::LIVE_VERSION);
         $context->method('getSource')->willReturn(new \Shopware\Core\Framework\Api\Context\SystemSource());
+        $context->method('enableInheritance')->willReturnCallback(fn (callable $read) => $read($context));
 
         return $context;
     }

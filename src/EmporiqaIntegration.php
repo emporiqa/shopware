@@ -12,15 +12,17 @@ use Shopware\Core\Framework\Plugin\Context\UpdateContext;
 
 class EmporiqaIntegration extends Plugin
 {
-    public const PLUGIN_VERSION = '1.2.5';
+    public const PLUGIN_VERSION = '1.3.0';
 
     /**
      * Before 1.2.4, tier prices from customer-group rules were synced as public
      * prices; before 1.2.5, prices in a non-default currency were sent without
-     * the exchange rate. Emporiqa keeps them until each product is synced
-     * again, so an update from an affected version schedules one product re-sync.
+     * the exchange rate; before 1.3.0, a guest rule's advanced prices, inherited
+     * variant prices and date-bound rules were read wrongly. Emporiqa keeps
+     * them until each product is synced again, so an update from an affected
+     * version schedules one product re-sync.
      */
-    private const FIRST_VERSION_WITH_CORRECT_PRICES = '1.2.5';
+    private const FIRST_VERSION_WITH_CORRECT_PRICES = '1.3.0';
 
     public function postUpdate(UpdateContext $updateContext): void
     {
@@ -49,7 +51,44 @@ class EmporiqaIntegration extends Plugin
         $this->container->get('Shopware\Core\System\SystemConfig\SystemConfigService')
             ->deletePluginConfiguration($this);
 
+        $this->purgeStoredState();
         $this->purgeOrderTrackingMarkers();
+        $this->dropActionTables();
+    }
+
+    /**
+     * deletePluginConfiguration() only removes the keys declared in
+     * config.xml; the connection state, rules status, channel and language
+     * choices and sync sessions the plugin stores itself would otherwise
+     * survive and come back on a reinstall.
+     */
+    private function purgeStoredState(): void
+    {
+        try {
+            /** @var Connection $connection */
+            $connection = $this->container->get(Connection::class);
+            $connection->executeStatement(
+                'DELETE FROM `system_config` WHERE `configuration_key` LIKE :prefix',
+                ['prefix' => 'EmporiqaIntegration.%'],
+            );
+        } catch (\Throwable $e) {
+            // Best-effort: never fail the uninstall over cleanup.
+        }
+    }
+
+    /**
+     * The order status endpoint's replay and rate-limit tables
+     * (Migration1759622400ActionTables).
+     */
+    private function dropActionTables(): void
+    {
+        try {
+            /** @var Connection $connection */
+            $connection = $this->container->get(Connection::class);
+            $connection->executeStatement('DROP TABLE IF EXISTS `emporiqa_action_request`, `emporiqa_action_rate`');
+        } catch (\Throwable $e) {
+            // Best-effort: never fail the uninstall over cleanup.
+        }
     }
 
     /**

@@ -276,7 +276,7 @@ class SyncControllerTest extends TestCase
         $response = $this->controller->syncBatch($this->jsonRequest([
             'entity' => 'products',
             'sessionId' => 'does-not-exist',
-            'page' => 1,
+            'cursor' => '',
         ]));
 
         $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
@@ -292,7 +292,7 @@ class SyncControllerTest extends TestCase
         $response = $this->controller->syncBatch($this->jsonRequest([
             'entity' => 'pages',
             'sessionId' => $sessionId,
-            'page' => 1,
+            'cursor' => '',
         ]));
 
         $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
@@ -305,16 +305,30 @@ class SyncControllerTest extends TestCase
         $this->syncService
             ->expects($this->once())
             ->method('syncBatch')
-            ->with('products', 4, $sessionId, 25)
-            ->willReturn(['success' => true, 'processed' => 25, 'events' => 25]);
+            ->with('products', '0123456789abcdef0123456789abcdef', $sessionId, 25)
+            ->willReturn(['success' => true, 'processed' => 25, 'events' => 25, 'nextCursor' => null]);
 
         $response = $this->controller->syncBatch($this->jsonRequest([
             'entity' => 'products',
             'sessionId' => $sessionId,
-            'page' => 4,
+            'cursor' => '0123456789abcdef0123456789abcdef',
         ]));
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+    }
+
+    public function testSyncBatchRefusesAMalformedCursor(): void
+    {
+        $sessionId = $this->seedGuard('products');
+        $this->syncService->expects($this->never())->method('syncBatch');
+
+        $response = $this->controller->syncBatch($this->jsonRequest([
+            'entity' => 'products',
+            'sessionId' => $sessionId,
+            'cursor' => "shop:' OR 1=1",
+        ]));
+
+        $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
     }
 
     public function testSyncBatchUpdatesGuardOnSuccess(): void
@@ -323,13 +337,12 @@ class SyncControllerTest extends TestCase
 
         $this->syncService
             ->method('syncBatch')
-            ->with('products', 2, $sessionId, null)
-            ->willReturn(['success' => true, 'processed' => 7, 'events' => 7]);
+            ->with('products', '', $sessionId, null)
+            ->willReturn(['success' => true, 'processed' => 7, 'events' => 7, 'nextCursor' => null]);
 
         $response = $this->controller->syncBatch($this->jsonRequest([
             'entity' => 'products',
             'sessionId' => $sessionId,
-            'page' => 2,
         ]));
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
@@ -354,7 +367,7 @@ class SyncControllerTest extends TestCase
         $response = $this->controller->syncBatch($this->jsonRequest([
             'entity' => 'products',
             'sessionId' => $sessionId,
-            'page' => 1,
+            'cursor' => '',
         ]));
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());

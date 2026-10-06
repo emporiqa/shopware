@@ -126,4 +126,22 @@ class ConnectControllerTest extends TestCase
         $this->assertFalse($data['success']);
         $this->assertStringContainsString('Missing code or state', $data['error']);
     }
+
+    public function testActionsUrlIsGivenForAnHttpsAdmin(): void
+    {
+        $this->connectService->method('actionsBaseUrl')->with('https://shop.example')->willReturn('https://shop.example/emporiqa/');
+
+        $response = $this->controller->actionsUrl(new Request([], [], [], [], [], [], (string) json_encode(['origin' => 'https://shop.example'])));
+
+        $this->assertSame(['url' => 'https://shop.example/emporiqa/'], json_decode((string) $response->getContent(), true));
+    }
+
+    public function testActionsUrlIsEmptyOverHttp(): void
+    {
+        $this->connectService->expects($this->never())->method('actionsBaseUrl');
+
+        $response = $this->controller->actionsUrl(new Request([], [], [], [], [], [], (string) json_encode(['origin' => 'http://localhost:8061'])));
+
+        $this->assertSame('', json_decode((string) $response->getContent(), true)['url']);
+    }
 }

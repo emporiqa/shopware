@@ -59,7 +59,13 @@ Component.register('emporiqa-integration-index', {
                 syncPages: true,
                 brandAttribute: '',
                 batchSize: 50,
+                orderTracking: true,
             },
+
+            // What Emporiqa last said about ready-made rules (connect or Test connection)
+            rulesAvailable: false,
+            liveRules: [],
+            actionsUrl: '',
 
             // Locale codes to sync; null means all languages (nothing saved yet)
             enabledLanguages: null,
@@ -129,6 +135,14 @@ Component.register('emporiqa-integration-index', {
             return !!(this.settings.storeId && this.settings.webhookSecret);
         },
 
+        orderStatusLive() {
+            return this.liveRules.includes('order_status');
+        },
+
+        orderStatusRuleUrl() {
+            return 'https://emporiqa.com/platform/rules/?add=order_status';
+        },
+
         availableSalesChannels() {
             return this.salesChannels.map((channel) => ({ id: channel.id, name: channel.name }));
         },
@@ -172,6 +186,7 @@ Component.register('emporiqa-integration-index', {
         }
 
         this.loadSettings();
+        this.loadActionsUrl();
         this.loadSalesChannels();
         this.loadPropertyGroups();
         this.loadOverview();
@@ -214,6 +229,8 @@ Component.register('emporiqa-integration-index', {
                             this.settings[key] = vals[prefixedKey];
                         }
                     });
+                    this.rulesAvailable = vals[`${CONFIG_PREFIX}rulesAvailable`] === true;
+                    this.liveRules = this.parseSelection(vals[`${CONFIG_PREFIX}liveRules`]) || [];
                     this.enabledLanguages = this.parseSelection(vals[`${CONFIG_PREFIX}enabledLanguages`]);
                     this.enabledSalesChannels = this.parseSelection(vals[`${CONFIG_PREFIX}enabledSalesChannels`]);
                 })
@@ -272,6 +289,14 @@ Component.register('emporiqa-integration-index', {
             this.emporiqaService.testConnection()
                 .then((response) => {
                     this.connectionResult = response;
+                    // Test connection refreshes what Emporiqa says about ready-made rules
+                    if (response && response.success && response.dry_run
+                        && Object.prototype.hasOwnProperty.call(response.dry_run, 'rules_available')) {
+                        this.rulesAvailable = response.dry_run.rules_available === true;
+                        this.liveRules = this.rulesAvailable && Array.isArray(response.dry_run.live_rules)
+                            ? response.dry_run.live_rules
+                            : [];
+                    }
                 })
                 .catch((error) => {
                     this.connectionResult = {
@@ -361,58 +386,61 @@ Component.register('emporiqa-integration-index', {
 
             this.syncProgress.total = sessions.reduce((sum, session) => sum + session.total, 0);
 
-            const workQueue = [];
-            sessions.forEach((session) => {
-                const totalPages = Math.ceil(session.total / batchSize);
+            const entityErrors = {};
+            let processed = 0;
+
+            // Batches are paged by id: each answer names the cursor of the next one.
+            for (const session of sessions) {
+                const totalPages = Math.max(1, Math.ceil(session.total / batchSize));
                 this.addSyncLog(
                     this.$t('emporiqa-integration.sync.driver.started', { entity: this.entityLabel(session.entity) }),
                     'info',
                 );
-                for (let page = 1; page <= totalPages; page++) {
-                    workQueue.push({ entity: session.entity, sessionId: session.sessionId, page, totalPages });
+
+                let cursor = '';
+                let page = 0;
+                while (cursor !== null) {
+                    if (this.syncCancelled) {
+                        this.addSyncLog(this.$t('emporiqa-integration.sync.driver.cancelled'), 'warning');
+                        this.isSyncRunning = false;
+                        this.syncingEntities = [];
+                        return;
+                    }
+
+                    page += 1;
+                    const batchResult = await this.runSyncBatch(session, cursor);
+
+                    if (batchResult.success) {
+                        processed += batchResult.processed || 0;
+                        this.addSyncLog(
+                            this.$t('emporiqa-integration.sync.driver.batchProcessed', {
+                                entity: this.entityLabel(session.entity),
+                                page,
+                                totalPages: Math.max(totalPages, page),
+                                count: batchResult.processed || 0,
+                            }),
+                            'info',
+                        );
+                    } else {
+                        entityErrors[session.entity] = (entityErrors[session.entity] || 0) + 1;
+                        const reason = batchResult.error ? ` ${batchResult.error}` : '';
+                        this.addSyncLog(
+                            this.$t('emporiqa-integration.sync.driver.batchError', {
+                                entity: this.entityLabel(session.entity),
+                                page,
+                            }) + reason,
+                            'error',
+                        );
+                    }
+
+                    // A failed request has no cursor: this entity stops here.
+                    cursor = typeof batchResult.nextCursor === 'string' ? batchResult.nextCursor : null;
+
+                    this.syncProgress.processed = processed;
+                    this.syncProgress.percent = this.syncProgress.total > 0
+                        ? Math.min(100, Math.round((processed / this.syncProgress.total) * 100))
+                        : 0;
                 }
-            });
-
-            const entityErrors = {};
-            let processed = 0;
-
-            for (const work of workQueue) {
-                if (this.syncCancelled) {
-                    this.addSyncLog(this.$t('emporiqa-integration.sync.driver.cancelled'), 'warning');
-                    this.isSyncRunning = false;
-                    this.syncingEntities = [];
-                    return;
-                }
-
-                const batchResult = await this.runSyncBatch(work);
-
-                if (batchResult.success) {
-                    processed += batchResult.processed || 0;
-                    this.addSyncLog(
-                        this.$t('emporiqa-integration.sync.driver.batchProcessed', {
-                            entity: this.entityLabel(work.entity),
-                            page: work.page,
-                            totalPages: work.totalPages,
-                            count: batchResult.processed || 0,
-                        }),
-                        'info',
-                    );
-                } else {
-                    entityErrors[work.entity] = (entityErrors[work.entity] || 0) + 1;
-                    const reason = batchResult.error ? ` ${batchResult.error}` : '';
-                    this.addSyncLog(
-                        this.$t('emporiqa-integration.sync.driver.batchError', {
-                            entity: this.entityLabel(work.entity),
-                            page: work.page,
-                        }) + reason,
-                        'error',
-                    );
-                }
-
-                this.syncProgress.processed = processed;
-                this.syncProgress.percent = this.syncProgress.total > 0
-                    ? Math.min(100, Math.round((processed / this.syncProgress.total) * 100))
-                    : 0;
             }
 
             let hadErrors = Object.keys(entityErrors).length > 0;
@@ -463,9 +491,9 @@ Component.register('emporiqa-integration-index', {
             }
         },
 
-        async runSyncBatch(work) {
+        async runSyncBatch(session, cursor) {
             try {
-                return await this.emporiqaService.syncBatch(work.entity, work.sessionId, work.page);
+                return await this.emporiqaService.syncBatch(session.entity, session.sessionId, cursor);
             } catch (error) {
                 return {
                     success: false,
@@ -519,9 +547,30 @@ Component.register('emporiqa-integration-index', {
                 });
         },
 
+        loadActionsUrl() {
+            this.emporiqaService.actionsUrl(window.location.origin)
+                .then((response) => {
+                    this.actionsUrl = (response && response.url) || '';
+                })
+                .catch(() => {
+                    this.actionsUrl = '';
+                });
+        },
+
+        async copyActionsUrl() {
+            await this.copyText(this.actionsUrl);
+        },
+
         async copyOrderTrackingUrl() {
+            await this.copyText(this.orderTrackingUrl);
+        },
+
+        async copyText(text) {
+            if (!text) {
+                return;
+            }
             try {
-                await navigator.clipboard.writeText(this.orderTrackingUrl);
+                await navigator.clipboard.writeText(text);
                 if (this.createNotificationSuccess) {
                     this.createNotificationSuccess({
                         message: this.$t('emporiqa-integration.settings.connection.copyUrl'),

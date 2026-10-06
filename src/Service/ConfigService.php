@@ -70,9 +70,42 @@ class ConfigService implements ConfigServiceInterface
         return true;
     }
 
+    /**
+     * The old order tracking endpoint. On unless the merchant switched it off
+     * (the setting exists from 1.3.0; nothing stored means on).
+     */
     public function isOrderTrackingEnabled(?string $salesChannelId = null): bool
     {
-        return true;
+        return (bool) ($this->systemConfig->get(self::CONFIG_PREFIX . 'orderTracking', $salesChannelId) ?? true);
+    }
+
+    public function saveRulesStatus(array $answer): void
+    {
+        // An answer without the key (an older platform) changes nothing.
+        if (!\array_key_exists('rules_available', $answer)) {
+            return;
+        }
+        $available = (bool) $answer['rules_available'];
+        $live = [];
+        if ($available && \is_array($answer['live_rules'] ?? null)) {
+            foreach ($answer['live_rules'] as $key) {
+                if (\is_string($key) && preg_match('/^[a-z_]{1,40}$/D', $key)) {
+                    $live[] = $key;
+                }
+            }
+        }
+        $this->systemConfig->set(self::CONFIG_PREFIX . 'rulesAvailable', $available);
+        $this->systemConfig->set(self::CONFIG_PREFIX . 'liveRules', json_encode($live));
+    }
+
+    public function isRulesAvailable(): bool
+    {
+        return (bool) $this->systemConfig->get(self::CONFIG_PREFIX . 'rulesAvailable');
+    }
+
+    public function getLiveRules(): array
+    {
+        return $this->getStringList('liveRules', null);
     }
 
     public function getChannelMapping(?string $salesChannelId = null): array

@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.3.0 (2026-10-05)
+
+### In short
+- Order tracking works as in 1.2.5 and stays on. The plugin now also works with Emporiqa's ready-made rules: the new Order status rule replaces the old order tracking, and the Emporiqa page shows it as On or Not added.
+- A full-page cache or a server log can no longer hand one shopper's identity to another in the chat.
+- Prices the chat quotes now match the cart for advanced prices that apply to every visitor, for variants that inherit their price, and for dated sales while they run.
+
+### Added
+- **Order status rule.** A read-only endpoint for Emporiqa's ready-made Order status rule (`/emporiqa/actions/order-status`), signed both ways with per-purpose keys (scheme 2), deduplicated on `request_id` for 10 minutes and rate limited per order number and per email (10 per 10 minutes) and per store (300), answered with a signed 429 whose `data.scope` says which limit was hit and a `Retry-After` header. It answers the same for an unknown order and a wrong email, checks the required fields before the lookup, only finds orders of the synced sales channels, and returns the order state, date, tracking numbers with their links and the expected delivery date, nothing else. A signed-in shopper only gives the order number; a signed-in shopper can still look up a guest order by giving its email. Extensions can adjust the answer with the new `OrderStatusResponseEvent`.
+- **Ready-made rules card** on the Settings tab, shown once Emporiqa says the store has rules (at connect or Test connection). It shows the plugin's Order status address with a Copy button, whether Order status is On or Not added, and an Open in Emporiqa button. No reconnect is needed after the update.
+- **Customer prices.** A read-only endpoint (`/emporiqa/actions/customer-prices`), signed and rate limited like Order status (30 calls per customer and 600 per store every 10 minutes, deduplicated on `request_id`), that tells Emporiqa what one signed-in customer pays for up to 20 products: their customer group's prices and net or gross display, their own rule prices, quantity prices as the cart charges them, in the requested currency when the sales channel sells in it. Prices come from Shopware's own price calculation for a fresh context of that customer; nothing is saved and no cart or session is touched. Products the customer cannot see are left out, an unknown or inactive customer gets `not_found`, and the answer holds prices only. Emporiqa will use it in a later release.
+- **Dated sales reach the chat when they start and leave it when they end.** A new scheduled task (`emporiqa.price_rule_boundary`, every 15 minutes) re-syncs the products priced by a rule whose date range has just started or ended. Rules on time of day or weekday are still never published. It runs with Shopware's scheduled tasks (`scheduled-task:run` or the admin worker).
+- `/emporiqa/actions/verify` answers Emporiqa's signed address check and, during one-click connect, the proof that the shop really is at the connected address.
+- Sync webhooks carry the scheme-2 `X-Emporiqa-Webhook-Signature` beside the old `X-Webhook-Signature`, plus `X-Emporiqa-Plugin-Version`, signed afresh on every retry.
+- Connect sends the Order status address (the storefront domain on the admin's host, including a domain path such as `/de`), keeps the connect verifier until Emporiqa answers, and stores what Emporiqa says about rules.
+- Test connection warns when this server's clock is more than 2 minutes off Emporiqa's (Emporiqa refuses signatures more than 5 minutes off).
+- Order status, verify and the old order tracking answer while the shop is in maintenance mode.
+
+### Changed
+- **The customer token is no longer put in the widget URL or cached in the browser.** It is fetched from the uncached `/emporiqa/api/user-token` endpoint only when the chat opens, carries `aud` (the Emporiqa store id), and is handed to the widget on a private `MessageChannel` port. A guest is answered without a request, a signed-in shopper's token is reused for at most five minutes, and a failed answer is never reused.
+- **Old order tracking.** It keeps working exactly as before and stays on, on new installs and after the update. Where ready-made rules are offered it moves under Advanced as "Old order tracking (deprecated)" with an on/off switch; remove its address in the Emporiqa dashboard first, then switch it off. Invalid order numbers are answered as unknown without a lookup, and an error never shows a stack trace.
+- The cart and customer-token addresses include the sales channel domain path (for example `/de`), so they work on domains with a path.
+- Variant payloads are smaller: a variant no longer repeats the parent's descriptions, categories and manufacturer, or the parent-only fields `variation_attributes` and `is_parent`. Emporiqa takes them from the parent product, so nothing changes in the chat.
+- The manual sync pages by id instead of by offset, so an item deactivated or deleted mid-sync can no longer shift the pages, skip a live item and get it deleted when the sync completes.
+- Connect waits up to 20 seconds for Emporiqa, which checks the shop address during the exchange.
+- **The plugin's own admin endpoints need the plugin-maintenance privilege** (`system.plugin_maintain`): Connect, Sync, Test connection and the plugin's settings page now refuse an admin role or integration without it. The Emporiqa settings are still ordinary system configuration, so a role with the `system_config:update` privilege can change them through Shopware's own system-config API. Administrators are unaffected.
+- When one shop is connected to several Emporiqa stores (a store per sales channel), Order status only searches the sales channels of the store that asked, and request replay and rate limits are kept per store.
+- Errors of the action endpoints and the old order tracking are logged without the database message, which could contain a shopper's email or order number.
+- `GET /emporiqa/api/user-token` still answers for storefront themes compiled before 1.3.0; it will be POST only from 1.4.0.
+
+### Fixed
+- **Advanced prices for all visitors are now the price the chat quotes.** When a price rule that applies to guests (for example "Always valid") has advanced prices, the storefront charges its first quantity row and ignores the product's own price, but that price was sent instead. The current price, list price and quantity prices now come from that rule, exactly as the cart charges them.
+- **Variants that inherit their price are no longer sent without a price.** A variant using the parent's price, or the parent's advanced prices, now gets them, as in the storefront.
+- **Prices from rules that depend on the time of day or weekday are no longer sent.** They change too often to keep in sync, so a happy-hour or Sunday price could be quoted outside its hours. The price that applies outside them is sent instead.
+- **A product assigned to no sales channel is no longer synced.** No storefront shows it, but it was offered in the chat on every channel.
+- **A product set to "Hide in listings and search" in a sales channel is no longer synced to that channel.** The storefront only opens it by its link there, so the chat does not offer it either. "Hide in listings" still lets the storefront search find it, so such a product stays.
+- **A product that no synced sales channel shows any more leaves the chat as soon as it is saved**, with its variants. Removing its last sales channel or setting it to "Hide in listings and search" used to keep it in the chat until the next full sync, and a change made only to a product's sales channels or their visibility was not sent at all.
+- The data preview on the Sync tab shows quantity prices, as the sync sends them.
+- Two connect callbacks racing with the same link can no longer both be exchanged.
+- **Uninstalling without keeping data now removes all plugin settings.** The connection state, the rules status, the old order tracking switch, the language and sales channel choices and sync sessions were left behind and came back on a reinstall.
+- **Products are re-synced once after updating**, so prices already sent to Emporiqa are corrected without any action. On a headless setup without the storefront, run Sync products once from the Emporiqa page.
+- Manual sync, Test connection and the CLI commands work again on Shopware 6.6.0.x, where they failed with "Call to undefined method Context::createCLIContext()" since 1.2.1.
+- A sync that cannot reach Emporiqa shows the error once per batch instead of once per request, without an internal id as "offset", and an error from Emporiqa keeps its hint (for example how long to wait before a stuck sync can be started again).
+
 ## 1.2.5 (2026-09-29)
 
 ### Fixed

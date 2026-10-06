@@ -6,9 +6,12 @@ namespace Emporiqa\ShopwarePlugin\Service;
 
 use Shopware\Core\Checkout\Cart\Price\CashRounding;
 use Shopware\Core\Content\Product\Aggregate\ProductMedia\ProductMediaEntity;
+use Shopware\Core\Content\Product\Aggregate\ProductPrice\ProductPriceCollection;
+use Shopware\Core\Content\Product\Aggregate\ProductVisibility\ProductVisibilityDefinition;
 use Shopware\Core\Content\Product\ProductEntity;
 use Shopware\Core\Framework\DataAbstractionLayer\Pricing\CashRoundingConfig;
 use Shopware\Core\Framework\DataAbstractionLayer\Pricing\Price;
+use Shopware\Core\Framework\DataAbstractionLayer\Pricing\PriceCollection;
 
 class ProductFormatter implements ProductFormatterInterface
 {
@@ -116,7 +119,7 @@ class ProductFormatter implements ProductFormatterInterface
                 }
                 $seenCurrencies[$currencyIso] = true;
 
-                $priceEntry = $this->buildPriceEntry($product, $currencyIso, $ctx['currencyId'] ?? null, $ctx['salesChannelId'] ?? null, (float) ($ctx['currencyFactor'] ?? 1.0), $this->itemRounding($ctx));
+                $priceEntry = $this->buildPriceEntry($product->getPrice(), $product->getPrices(), $currencyIso, $ctx['currencyId'] ?? null, $ctx['salesChannelId'] ?? null, (float) ($ctx['currencyFactor'] ?? 1.0), $this->itemRounding($ctx));
                 if ($priceEntry !== null) {
                     $channelPrices[] = $priceEntry;
                 }
@@ -186,17 +189,14 @@ class ProductFormatter implements ProductFormatterInterface
                     $child,
                     $parentSku,
                     $names,
-                    $categories,
-                    $brands,
                     $images,
-                    $descriptions,
                     $channelContexts,
-                    $defaultCategory,
-                    $defaultBrand,
                     $syncSessionId,
                     $parentMinPurchase,
                     $parentMaxPurchase,
                     $parentIsCloseout,
+                    $product->getPrice(),
+                    $product->getPrices(),
                 );
 
                 $result[] = $variationData;
@@ -289,11 +289,12 @@ class ProductFormatter implements ProductFormatterInterface
     }
 
     /**
+     * A variation is stored by Emporiqa as a lean row: descriptions,
+     * categories and brands are inherited from the parent, and
+     * variation_attributes / is_parent are fixed. They are not sent.
+     *
      * @param array<string, array<string, string>> $parentNames
-     * @param array<string, array<string, string[]>> $parentCategories
-     * @param array<string, string> $parentBrands
      * @param array<string, string[]> $parentImages
-     * @param array<string, array<string, string>> $parentDescriptions
      * @param array<string, array<int, array<string, string>>> $channelContexts
      * @return array<string, mixed>
      */
@@ -301,23 +302,19 @@ class ProductFormatter implements ProductFormatterInterface
         ProductEntity $variant,
         string $parentSku,
         array $parentNames,
-        array $parentCategories,
-        array $parentBrands,
         array $parentImages,
-        array $parentDescriptions,
         array $channelContexts,
-        string $defaultCategory,
-        string $defaultBrand,
         ?string $syncSessionId,
         int $parentMinPurchase = 1,
         ?int $parentMaxPurchase = null,
         bool $parentIsCloseout = false,
+        ?PriceCollection $parentPrice = null,
+        ?ProductPriceCollection $parentRulePrices = null,
     ): array {
         $variantId = $variant->getId();
         $channelKeys = array_keys($channelContexts);
 
         $names = [];
-        $descriptions = [];
         $links = [];
         $attributes = [];
         $prices = [];
@@ -332,9 +329,19 @@ class ProductFormatter implements ProductFormatterInterface
         $stock = $variant->getAvailableStock() ?? $variant->getStock();
         $availability = $this->resolveAvailability($stock, $this->resolveIsCloseout($variant, $parentIsCloseout));
 
+        // Products are loaded without considerInheritance, so a variant that
+        // inherits its price or advanced prices from the parent reads them as
+        // empty. Shopware inherits each of the two fields on its own: a variant
+        // with its own price but no advanced prices is still priced by the
+        // parent's advanced prices in the storefront.
+        $variantPrice = $variant->getPrice() ?? $parentPrice;
+        $variantRulePrices = $variant->getPrices();
+        if ($variantRulePrices === null || $variantRulePrices->count() === 0) {
+            $variantRulePrices = $parentRulePrices;
+        }
+
         foreach ($channelContexts as $channelKey => $contexts) {
             $channelNames = [];
-            $channelDescriptions = [];
             $channelLinks = [];
             $channelAttributes = [];
 
@@ -350,14 +357,12 @@ class ProductFormatter implements ProductFormatterInterface
 
                     $baseName = $parentNames[$channelKey][$langCode] ?? $this->getTranslatedString($variant, 'name', $languageId);
                     $channelNames[$langCode] = $baseName . $optionSuffix;
-                    $channelDescriptions[$langCode] = $parentDescriptions[$channelKey][$langCode] ?? '';
                     $channelLinks[$langCode] = $this->getProductUrl($variant, $domainUrl, $ctx['salesChannelId'] ?? null, $languageId ?: null);
                     $channelAttributes[$langCode] = !empty($variantOptionAttrs) ? $variantOptionAttrs : new \stdClass();
                 }
             }
 
             $names[$channelKey] = $channelNames;
-            $descriptions[$channelKey] = $channelDescriptions;
             $links[$channelKey] = $channelLinks;
             $attributes[$channelKey] = $channelAttributes;
 
@@ -369,7 +374,7 @@ class ProductFormatter implements ProductFormatterInterface
                     continue;
                 }
                 $seenCurrencies[$currencyIso] = true;
-                $priceEntry = $this->buildPriceEntry($variant, $currencyIso, $ctx['currencyId'] ?? null, $ctx['salesChannelId'] ?? null, (float) ($ctx['currencyFactor'] ?? 1.0), $this->itemRounding($ctx));
+                $priceEntry = $this->buildPriceEntry($variantPrice, $variantRulePrices, $currencyIso, $ctx['currencyId'] ?? null, $ctx['salesChannelId'] ?? null, (float) ($ctx['currencyFactor'] ?? 1.0), $this->itemRounding($ctx));
                 if ($priceEntry !== null) {
                     $channelPrices[] = $priceEntry;
                 }
@@ -390,18 +395,13 @@ class ProductFormatter implements ProductFormatterInterface
             'sku' => $variant->getProductNumber(),
             'channels' => $channelKeys,
             'names' => $names,
-            'descriptions' => $descriptions,
             'links' => $links,
-            'categories' => $parentCategories,
-            'brands' => $parentBrands,
             'prices' => $prices,
             'availability_statuses' => $availabilityStatuses,
             'stock_quantities' => $stockQuantities,
             'images' => $images,
             'attributes' => $attributes,
             'parent_sku' => $parentSku,
-            'is_parent' => false,
-            'variation_attributes' => new \stdClass(),
             'min_order_quantities' => $minOrderQuantities,
             'max_order_quantities' => $maxOrderQuantities,
             'available_for_order' => true,
@@ -580,26 +580,34 @@ class ProductFormatter implements ProductFormatterInterface
     /**
      * @return array{currency: string, current_price: float, regular_price: float, price_incl_tax?: float, price_excl_tax?: float, tier_prices?: array<int, array{min_quantity: int, price: float}>}|null
      */
-    private function buildPriceEntry(ProductEntity $product, string $currencyIso, ?string $currencyId = null, ?string $salesChannelId = null, float $currencyFactor = 1.0, ?CashRoundingConfig $rounding = null): ?array
+    private function buildPriceEntry(?PriceCollection $prices, ?ProductPriceCollection $rulePrices, string $currencyIso, ?string $currencyId = null, ?string $salesChannelId = null, float $currencyFactor = 1.0, ?CashRoundingConfig $rounding = null): ?array
     {
-        $prices = $product->getPrice();
-        if ($prices === null || $prices->count() === 0) {
-            return null;
-        }
-
-        $price = null;
-        if ($currencyId !== null) {
-            $price = $prices->getCurrencyPrice($currencyId);
-        }
-        // Only fall back to default price when no specific currency was requested
-        if ($price === null && $currencyId === null) {
-            $price = $prices->first();
-        }
-        if ($price === null) {
-            return null;
-        }
-
         $rounding ??= new CashRoundingConfig(2, 0.01, true);
+
+        // When a guest's rule has advanced prices, the storefront prices the
+        // product from them alone: the lowest quantity row is what one unit
+        // costs (ProductCartProcessor::getPriceDefinition), and the product's
+        // own price and list price are not shown.
+        $guestRows = $this->guestRulePriceRows($rulePrices, $currencyId, $salesChannelId);
+        $baseRow = array_shift($guestRows);
+        $price = $baseRow['price'] ?? null;
+
+        if ($price === null) {
+            if ($prices === null || $prices->count() === 0) {
+                return null;
+            }
+            if ($currencyId !== null) {
+                $price = $prices->getCurrencyPrice($currencyId);
+            }
+            // Only fall back to default price when no specific currency was requested
+            if ($price === null && $currencyId === null) {
+                $price = $prices->first();
+            }
+            if ($price === null) {
+                return null;
+            }
+        }
+
         $factor = $this->conversionFactor($price, $currencyId, $currencyFactor);
         $gross = $this->cashRounding->cashRound($price->getGross() * $factor, $rounding);
         $net = $this->cashRounding->mathRound($price->getNet() * $factor, $rounding);
@@ -622,7 +630,7 @@ class ProductFormatter implements ProductFormatterInterface
             $entry['price_excl_tax'] = $net;
         }
 
-        $tierPrices = $this->buildTierPrices($product, $currencyId, $entry['current_price'], $salesChannelId, $currencyFactor, $rounding);
+        $tierPrices = $this->buildTierPrices($guestRows, $currencyId, $gross, $currencyFactor, $rounding);
         if (!empty($tierPrices)) {
             $entry['tier_prices'] = $tierPrices;
         }
@@ -631,18 +639,19 @@ class ProductFormatter implements ProductFormatterInterface
     }
 
     /**
-     * Build quantity-discount tiers from the advanced prices a guest shopper sees, for one currency.
+     * The advanced-price rows a guest shopper is priced with, for one currency,
+     * in ascending quantity order.
      *
      * Only the highest-priority rule that a guest matches and that has prices on
      * this product counts, the same selection the storefront's price calculator
      * makes. Prices of rules scoped to a customer group or any other audience are
-     * never published.
+     * never published. A row without a price in this currency keeps its place
+     * with a null price, so it can never be mistaken for the base row.
      *
-     * @return array<int, array{min_quantity: int, price: float}>
+     * @return list<array{quantity: int, price: ?Price}>
      */
-    private function buildTierPrices(ProductEntity $product, ?string $currencyId, float $currentPrice, ?string $salesChannelId, float $currencyFactor, CashRoundingConfig $rounding): array
+    private function guestRulePriceRows(?ProductPriceCollection $rulePrices, ?string $currencyId, ?string $salesChannelId): array
     {
-        $rulePrices = $product->getPrices();
         if ($rulePrices === null || $rulePrices->count() === 0 || $salesChannelId === null || $salesChannelId === '') {
             return [];
         }
@@ -659,18 +668,32 @@ class ProductFormatter implements ProductFormatterInterface
             return [];
         }
 
-        $byQuantity = [];
+        $rows = [];
         foreach ($guestRulePrices as $rulePrice) {
-            $minQuantity = $rulePrice->getQuantityStart();
-            if ($minQuantity <= 1) {
-                continue;
-            }
-
             $priceCollection = $rulePrice->getPrice();
-            $price = $currencyId !== null
-                ? $priceCollection->getCurrencyPrice($currencyId)
-                : $priceCollection->first();
-            if ($price === null) {
+            $rows[] = [
+                'quantity' => $rulePrice->getQuantityStart(),
+                'price' => $currencyId !== null ? $priceCollection->getCurrencyPrice($currencyId) : $priceCollection->first(),
+            ];
+        }
+        usort($rows, static fn (array $a, array $b): int => $a['quantity'] <=> $b['quantity']);
+
+        return $rows;
+    }
+
+    /**
+     * Quantity-discount tiers from the guest's advanced-price rows above the base row.
+     *
+     * @param list<array{quantity: int, price: ?Price}> $rows
+     * @return array<int, array{min_quantity: int, price: float}>
+     */
+    private function buildTierPrices(array $rows, ?string $currencyId, float $currentPrice, float $currencyFactor, CashRoundingConfig $rounding): array
+    {
+        $byQuantity = [];
+        foreach ($rows as $row) {
+            $minQuantity = $row['quantity'];
+            $price = $row['price'];
+            if ($minQuantity <= 1 || $price === null) {
                 continue;
             }
 
@@ -880,23 +903,29 @@ class ProductFormatter implements ProductFormatterInterface
     }
 
     /**
-     * Filter channel contexts to only include channels where the product is visible.
-     * If visibilities are not loaded, returns all channels (backwards compatible).
-     */
-    /**
+     * Keep only the channel contexts of sales channels whose storefront search
+     * finds the product. Visibilities not loaded: no information, every
+     * channel is kept. Loaded but empty, or "Hide in listings and search"
+     * everywhere: no channel is kept.
+     *
      * @param array<string, array<int, array<string, string>>> $channelContexts
      * @return array<string, array<int, array<string, string>>>
      */
     private function filterByVisibility(ProductEntity $product, array $channelContexts): array
     {
         $visibilities = $product->getVisibilities();
-        if ($visibilities === null || $visibilities->count() === 0) {
+        if ($visibilities === null) {
             return $channelContexts;
         }
 
+        // "Hide in listings and search" (VISIBILITY_LINK) leaves the product
+        // reachable only by its URL. The chat is a search, so it follows
+        // Shopware's own product search: VISIBILITY_SEARCH and up.
         $visibleSalesChannelIds = [];
         foreach ($visibilities as $visibility) {
-            $visibleSalesChannelIds[$visibility->getSalesChannelId()] = true;
+            if ($visibility->getVisibility() >= ProductVisibilityDefinition::VISIBILITY_SEARCH) {
+                $visibleSalesChannelIds[$visibility->getSalesChannelId()] = true;
+            }
         }
 
         $filtered = [];

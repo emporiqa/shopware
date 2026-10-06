@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Emporiqa\ShopwarePlugin\Tests\Service;
 
+use Doctrine\DBAL\Connection;
 use Emporiqa\ShopwarePlugin\EmporiqaIntegration;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\ConnectService;
@@ -221,6 +222,128 @@ class ConnectServiceTest extends TestCase
         $this->assertSame('one-time-code', $sentBody['code']);
         $this->assertSame($pending['verifier'], $sentBody['code_verifier']);
         $this->assertSame('https://myshop.example.com', $sentBody['shop_origin']);
+    }
+
+    public function testExchangeSendsTheActionsBaseUrlAndKeepsTheRulesStatus(): void
+    {
+        $this->createService()->initiate('https://myshop.example.com');
+        $pending = $this->getPending();
+
+        $history = [];
+        $client = $this->createClientWithMock([
+            new Response(200, [], json_encode([
+                'store_id' => 'store-42',
+                'webhook_secret' => 'super-secret',
+                'rules_available' => true,
+                'live_rules' => [],
+            ])),
+        ], $history);
+        $this->config->expects($this->once())->method('saveRulesStatus')
+            ->with($this->callback(fn (array $answer) => $answer['rules_available'] === true));
+
+        $this->createService($client)->exchange('one-time-code', $pending['state']);
+
+        $sentBody = json_decode((string) $history[0]['request']->getBody(), true);
+        $this->assertSame('https://myshop.example.com/emporiqa/', $sentBody['actions_base_url']);
+    }
+
+    public function testTheVerifierAnswersTheOriginProofOnlyWhileTheExchangeIsInFlight(): void
+    {
+        $this->createService()->initiate('https://myshop.example.com');
+        $pending = $this->getPending();
+        $service = null;
+        $duringExchange = 'unset';
+
+        $client = $this->createClientWithMock([
+            function () use (&$service, &$duringExchange, $pending) {
+                $duringExchange = $service->exchangingVerifier($pending['state']);
+
+                return new Response(200, [], json_encode(['store_id' => 'store-42', 'webhook_secret' => 'super-secret']));
+            },
+        ]);
+        $service = $this->createService($client);
+
+        // Pending but not exchanging yet: no answer.
+        $this->assertNull($service->exchangingVerifier($pending['state']));
+
+        $service->exchange('one-time-code', $pending['state']);
+
+        $this->assertSame($pending['verifier'], $duringExchange);
+        $this->assertNull($service->exchangingVerifier($pending['state']));
+    }
+
+    public function testTheVerifierIsNotGivenForAnotherState(): void
+    {
+        $this->configStore[self::PENDING_KEY] = json_encode([
+            'state' => 'real-state',
+            'verifier' => str_repeat('v', 64),
+            'origin' => 'https://myshop.example.com',
+            'createdAt' => time(),
+            'exchangingAt' => time(),
+        ]);
+
+        $this->assertNull($this->createService()->exchangingVerifier('other-state'));
+        $this->assertSame(str_repeat('v', 64), $this->createService()->exchangingVerifier('real-state'));
+    }
+
+    public function testAClaimedHandshakeCannotBeExchangedTwice(): void
+    {
+        $this->configStore[self::PENDING_KEY] = json_encode([
+            'state' => 'real-state',
+            'verifier' => str_repeat('v', 64),
+            'origin' => 'https://myshop.example.com',
+            'createdAt' => time(),
+            'exchangingAt' => time(),
+        ]);
+        $history = [];
+        $client = $this->createClientWithMock([], $history);
+
+        $result = $this->createService($client)->exchange('code', 'real-state');
+
+        $this->assertFalse($result['success']);
+        $this->assertCount(0, $history);
+    }
+
+    /**
+     * Two callbacks racing with the same state: the claim is a compare-and-set
+     * on the stored row, so only the one whose update lands may exchange.
+     */
+    public function testTheClaimIsAtomicAgainstAConcurrentCallback(): void
+    {
+        $raw = (string) json_encode([
+            'state' => 'real-state',
+            'verifier' => str_repeat('v', 64),
+            'origin' => 'https://myshop.example.com',
+            'createdAt' => time(),
+        ]);
+        $connection = $this->createMock(Connection::class);
+        $connection->method('fetchOne')->willReturn(json_encode(['_value' => $raw]));
+        $connection->expects($this->once())->method('executeStatement')
+            ->with($this->stringContains('UPDATE `system_config`'), $this->callback(fn (array $p) => $p['expected'] === $raw))
+            ->willReturn(0);
+        $history = [];
+        $service = new ConnectService($this->systemConfig, $this->config, $this->logger, $this->createClientWithMock([], $history), $connection);
+
+        $result = $service->exchange('code', 'real-state');
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('already used', $result['error']);
+        $this->assertCount(0, $history);
+    }
+
+    public function testActionsBaseUrlUsesTheShortestHttpsDomainOnTheAdminHost(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('fetchFirstColumn')->willReturn([
+            'https://myshop.example.com/de',
+            'https://myshop.example.com/en/b2b',
+            'http://myshop.example.com',
+            'https://other.example.com',
+        ]);
+        $service = new ConnectService($this->systemConfig, $this->config, $this->logger, null, $connection);
+
+        $this->assertSame('https://myshop.example.com/de/emporiqa/', $service->actionsBaseUrl('https://myshop.example.com'));
+        $this->assertSame('https://admin.example.com/emporiqa/', $service->actionsBaseUrl('https://admin.example.com'));
     }
 
     public function testExchangeFailsWhenNoPendingHandshake(): void

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Emporiqa\ShopwarePlugin\Service;
 
 use Shopware\Core\Defaults;
-use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
@@ -65,7 +64,7 @@ class ChannelResolver implements ChannelResolverInterface, ResetInterface
      */
     private function autoDetect(): array
     {
-        $context = Context::createCLIContext();
+        $context = SystemContext::create();
 
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('active', true));

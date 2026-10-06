@@ -1,0 +1,308 @@
+{
+  "description": "Scheme-2 signature vectors, one set per label. key = HKDF-SHA256(ikm=secret UTF-8, salt=b'emporiqa-v2', info=label + ':' + store_id, length=32); signature = lowercase hex HMAC-SHA256(key, str(t) + '.' + message UTF-8 bytes). message is body for 'plugin-to-emporiqa' (header X-Emporiqa-Webhook-Signature) and 'emporiqa-to-plugin' (X-Emporiqa-Action-Signature), and request_id + '.' + body for 'response' (X-Emporiqa-Response-Signature). Header: t=<t>,v1=<signature>.",
+  "salt": "emporiqa-v2",
+  "vectors": [
+    {
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "label": "plugin-to-emporiqa",
+      "t": 1767225600,
+      "body": "{\"type\":\"product.created\",\"data\":{\"identification_number\":\"SKU-1\"}}",
+      "expected_key_hex": "c492957c4b074d7c8ec500233616e2a7013cdaca900e542db41fcaecba6a3131",
+      "expected_signature": "2f449b113b45c39cac40b4d2e3fc21cb16be4e627ee34637cdda4c3744012430",
+      "expected_header": "t=1767225600,v1=2f449b113b45c39cac40b4d2e3fc21cb16be4e627ee34637cdda4c3744012430"
+    },
+    {
+      "secret": "pässwörd-ünicode-secret",
+      "store_id": "abc123",
+      "label": "plugin-to-emporiqa",
+      "t": 1767225900,
+      "body": "{\"events\":[]}",
+      "expected_key_hex": "92794c02e7a39320a8bbbf9d9d1608292b6b0d7dc878d0392fab91ca24310796",
+      "expected_signature": "46dbe965caeaedb11974aece65ca056b41eaf3e59a161559b146a567d150fd1d",
+      "expected_header": "t=1767225900,v1=46dbe965caeaedb11974aece65ca056b41eaf3e59a161559b146a567d150fd1d"
+    },
+    {
+      "secret": "short",
+      "store_id": "s1",
+      "label": "plugin-to-emporiqa",
+      "t": 1767226200,
+      "body": "",
+      "expected_key_hex": "cf0b4d4181b00627f3acb7a930c0b0df43a2a13d511697ed5bb52e7c399d883a",
+      "expected_signature": "c6929d0d25c5d73eb647d4a8f45a24a6c4832f1fc156a23b91f46b3a3bf20bc1",
+      "expected_header": "t=1767226200,v1=c6929d0d25c5d73eb647d4a8f45a24a6c4832f1fc156a23b91f46b3a3bf20bc1"
+    },
+    {
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "label": "emporiqa-to-plugin",
+      "t": 1767225600,
+      "body": "{\"rule\":\"order_status\",\"request_id\":\"r-1\",\"fields\":{\"order_number\":\"KHWLILZLL\",\"email\":\"pub@prestashop.com\"}}",
+      "expected_key_hex": "a05a538739a6e4e5c31b761e24933f93a57cc5cfd7ec85fd6a777d0efb9d30e5",
+      "expected_signature": "b7e6ddc78238088ff518d1f1d7466c60de9fb2ea60b584bb4a573c6e89221592",
+      "expected_header": "t=1767225600,v1=b7e6ddc78238088ff518d1f1d7466c60de9fb2ea60b584bb4a573c6e89221592"
+    },
+    {
+      "secret": "pässwörd-ünicode-secret",
+      "store_id": "abc123",
+      "label": "emporiqa-to-plugin",
+      "t": 1767225900,
+      "body": "{\"rule\":\"order_status\",\"request_id\":\"r-ü\",\"fields\":{\"order_number\":\"ÄÖÜ-123\",\"email\":\"jürgen@例え.jp\"}}",
+      "expected_key_hex": "c16f35d4c46645d991eddd16bf5698f7c9460a1351dfb7ff5e431e6e5ca09815",
+      "expected_signature": "f9f2c25cb4de48b9a0415770aa16083fc3101aff4dbb4ea7cb675c97894480d9",
+      "expected_header": "t=1767225900,v1=f9f2c25cb4de48b9a0415770aa16083fc3101aff4dbb4ea7cb675c97894480d9"
+    },
+    {
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "label": "response",
+      "t": 1767225600,
+      "request_id": "r-1",
+      "body": "{\"status\":\"found\",\"data\":{\"status_code\":\"shipped\"}}",
+      "expected_key_hex": "9a9faea93b62df549e10ad87ba06d9b415d732c149ef10790cfb42e6b755cf7f",
+      "expected_signature": "015969905929a0da146e1468e82f35bfe10ae2dd6b7959ab9b84d0164d38b52d",
+      "expected_header": "t=1767225600,v1=015969905929a0da146e1468e82f35bfe10ae2dd6b7959ab9b84d0164d38b52d"
+    },
+    {
+      "secret": "pässwörd-ünicode-secret",
+      "store_id": "abc123",
+      "label": "response",
+      "t": 1767225900,
+      "request_id": "r-ü",
+      "body": "{\"status\":\"found\",\"data\":{\"status_label\":\"Versandt – unterwegs ✓\"}}",
+      "expected_key_hex": "00ce67eb549a90c38f191197bb8ba35cf7af8b4d0866a07b5e4664692829ba14",
+      "expected_signature": "95d522151d37159395f8c5b2277dc06bb0bb5ba8bc52254a87af1b929f51fac3",
+      "expected_header": "t=1767225900,v1=95d522151d37159395f8c5b2277dc06bb0bb5ba8bc52254a87af1b929f51fac3"
+    }
+  ],
+  "description_negative": "Each negative vector must be REFUSED when verified at time `now` with its secret and store_id, by Emporiqa's verifier of plugin-to-emporiqa webhooks. Cases marked single_v1_only are refused because that verifier takes exactly one v1; a verifier of Emporiqa's own signatures (emporiqa-to-plugin) must ACCEPT several v1 values, so it skips them and checks rotation_vectors instead. A plugin's verifier test can assert the same.",
+  "negative_vectors": [
+    {
+      "case": "wrong label",
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "now": 1767225600,
+      "body": "{\"type\":\"product.created\",\"data\":{\"identification_number\":\"SKU-1\"}}",
+      "header": "t=1767225600,v1=53b07ccdd7266b785fc2e9ae1ee5413d3a16bdab091452abab4b0c329f5f98eb"
+    },
+    {
+      "case": "wrong store id",
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "now": 1767225600,
+      "body": "{\"type\":\"product.created\",\"data\":{\"identification_number\":\"SKU-1\"}}",
+      "header": "t=1767225600,v1=6dfbf1a92817264926c9c437c38f05c1ff49a606508b0eb692f3f97ba9aa8a4a"
+    },
+    {
+      "case": "t not plain digits: '+1767225600'",
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "now": 1767225600,
+      "body": "{\"type\":\"product.created\",\"data\":{\"identification_number\":\"SKU-1\"}}",
+      "header": "t=+1767225600,v1=1d9a85f5236261a9ddc8b20decf86c66e4c901c40d6ab6b636eff0512951388d"
+    },
+    {
+      "case": "t not plain digits: '1767225600.0'",
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "now": 1767225600,
+      "body": "{\"type\":\"product.created\",\"data\":{\"identification_number\":\"SKU-1\"}}",
+      "header": "t=1767225600.0,v1=15edb90af1938208700e0c4880f867a70941dc05ffae8814f808c47dd99058b8"
+    },
+    {
+      "case": "t not plain digits: '１767225600'",
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "now": 1767225600,
+      "body": "{\"type\":\"product.created\",\"data\":{\"identification_number\":\"SKU-1\"}}",
+      "header": "t=１767225600,v1=385dbbaa18c1e871f893e698ff11eda6c5480b280f444dad354549d31454f623"
+    },
+    {
+      "case": "t not plain digits: '0x6955b900'",
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "now": 1767225600,
+      "body": "{\"type\":\"product.created\",\"data\":{\"identification_number\":\"SKU-1\"}}",
+      "header": "t=0x6955b900,v1=d3d86b113a4ac6e4f8e9bd6a3a0ec4f1731561936896ea4a36d3722c2575e6e1"
+    },
+    {
+      "case": "t not plain digits: '1767225600e0'",
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "now": 1767225600,
+      "body": "{\"type\":\"product.created\",\"data\":{\"identification_number\":\"SKU-1\"}}",
+      "header": "t=1767225600e0,v1=cfac2cf2e3606c6f3bdf620d0e0d7f33d2b1750efeb72633187fa249d120bc63"
+    },
+    {
+      "case": "uppercase hex",
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "now": 1767225600,
+      "body": "{\"type\":\"product.created\",\"data\":{\"identification_number\":\"SKU-1\"}}",
+      "header": "t=1767225600,v1=2F449B113B45C39CAC40B4D2E3FC21CB16BE4E627EE34637CDDA4C3744012430"
+    },
+    {
+      "case": "duplicated v1, both valid",
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "now": 1767225600,
+      "body": "{\"type\":\"product.created\",\"data\":{\"identification_number\":\"SKU-1\"}}",
+      "header": "t=1767225600,v1=2f449b113b45c39cac40b4d2e3fc21cb16be4e627ee34637cdda4c3744012430,v1=2f449b113b45c39cac40b4d2e3fc21cb16be4e627ee34637cdda4c3744012430",
+      "single_v1_only": true
+    },
+    {
+      "case": "duplicated v1, wrong one first",
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "now": 1767225600,
+      "body": "{\"type\":\"product.created\",\"data\":{\"identification_number\":\"SKU-1\"}}",
+      "header": "t=1767225600,v1=0000000000000000000000000000000000000000000000000000000000000000,v1=2f449b113b45c39cac40b4d2e3fc21cb16be4e627ee34637cdda4c3744012430",
+      "single_v1_only": true
+    },
+    {
+      "case": "duplicated t",
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "now": 1767225600,
+      "body": "{\"type\":\"product.created\",\"data\":{\"identification_number\":\"SKU-1\"}}",
+      "header": "t=1767225600,t=1767225600,v1=2f449b113b45c39cac40b4d2e3fc21cb16be4e627ee34637cdda4c3744012430"
+    },
+    {
+      "case": "body whitespace changed",
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "now": 1767225600,
+      "body": "{\"type\": \"product.created\",\"data\":{\"identification_number\":\"SKU-1\"}}",
+      "header": "t=1767225600,v1=2f449b113b45c39cac40b4d2e3fc21cb16be4e627ee34637cdda4c3744012430"
+    },
+    {
+      "case": "body trailing newline",
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "now": 1767225600,
+      "body": "{\"type\":\"product.created\",\"data\":{\"identification_number\":\"SKU-1\"}}\n",
+      "header": "t=1767225600,v1=2f449b113b45c39cac40b4d2e3fc21cb16be4e627ee34637cdda4c3744012430"
+    },
+    {
+      "case": "scheme-1 signature on a scheme-2 store",
+      "secret": "test-secret-0123456789abcdef0123456789abcdef",
+      "store_id": "st_7Kq2mXa9",
+      "now": 1767225600,
+      "body": "{\"type\":\"product.created\",\"data\":{\"identification_number\":\"SKU-1\"}}",
+      "header": "t=1767225600,v1=e7549f93e1af8f683b5463a11e3d97240a9c47a2e6eea77a13dd1fc627ce95a7",
+      "scheme1_signature": "e7549f93e1af8f683b5463a11e3d97240a9c47a2e6eea77a13dd1fc627ce95a7"
+    }
+  ],
+  "description_rotation": "While a store rotates its secret, Emporiqa signs every emporiqa-to-plugin request with both: t=<t>,v1=<new>,v1=<old>. A receiver holding EITHER secret must accept the header (any v1 matching is enough, compared in constant time), and must refuse it when no v1 matches, when it carries more than 3 v1 values, when any v1 is malformed, or when t is repeated. verify_with lists the secrets each case is checked with; expect is 'ok' or 'signature'.",
+  "rotation_vectors": [
+    {
+      "case": "new then old, receiver holds the new secret",
+      "label": "emporiqa-to-plugin",
+      "store_id": "st_7Kq2mXa9",
+      "t": 1767225600,
+      "body": "{\"rule\":\"order_status\",\"request_id\":\"r-1\",\"fields\":{\"order_number\":\"KHWLILZLL\",\"email\":\"pub@prestashop.com\"}}",
+      "secrets": [
+        "rotated-secret-fedcba9876543210fedcba9876543210",
+        "test-secret-0123456789abcdef0123456789abcdef"
+      ],
+      "verify_with": [
+        "rotated-secret-fedcba9876543210fedcba9876543210"
+      ],
+      "expect": "ok",
+      "header": "t=1767225600,v1=ad5dc347c0b87c03be3a1d225156f6a67defa7f1ef0f291aa2ad9be372205fd4,v1=b7e6ddc78238088ff518d1f1d7466c60de9fb2ea60b584bb4a573c6e89221592"
+    },
+    {
+      "case": "new then old, receiver still holds the old secret",
+      "label": "emporiqa-to-plugin",
+      "store_id": "st_7Kq2mXa9",
+      "t": 1767225600,
+      "body": "{\"rule\":\"order_status\",\"request_id\":\"r-1\",\"fields\":{\"order_number\":\"KHWLILZLL\",\"email\":\"pub@prestashop.com\"}}",
+      "secrets": [
+        "rotated-secret-fedcba9876543210fedcba9876543210",
+        "test-secret-0123456789abcdef0123456789abcdef"
+      ],
+      "verify_with": [
+        "test-secret-0123456789abcdef0123456789abcdef"
+      ],
+      "expect": "ok",
+      "header": "t=1767225600,v1=ad5dc347c0b87c03be3a1d225156f6a67defa7f1ef0f291aa2ad9be372205fd4,v1=b7e6ddc78238088ff518d1f1d7466c60de9fb2ea60b584bb4a573c6e89221592"
+    },
+    {
+      "case": "old then new, either secret",
+      "label": "emporiqa-to-plugin",
+      "store_id": "st_7Kq2mXa9",
+      "t": 1767225600,
+      "body": "{\"rule\":\"order_status\",\"request_id\":\"r-1\",\"fields\":{\"order_number\":\"KHWLILZLL\",\"email\":\"pub@prestashop.com\"}}",
+      "secrets": [
+        "test-secret-0123456789abcdef0123456789abcdef",
+        "rotated-secret-fedcba9876543210fedcba9876543210"
+      ],
+      "verify_with": [
+        "rotated-secret-fedcba9876543210fedcba9876543210",
+        "test-secret-0123456789abcdef0123456789abcdef"
+      ],
+      "expect": "ok",
+      "header": "t=1767225600,v1=b7e6ddc78238088ff518d1f1d7466c60de9fb2ea60b584bb4a573c6e89221592,v1=ad5dc347c0b87c03be3a1d225156f6a67defa7f1ef0f291aa2ad9be372205fd4"
+    },
+    {
+      "case": "two v1, neither from the receiver's secret",
+      "label": "emporiqa-to-plugin",
+      "store_id": "st_7Kq2mXa9",
+      "t": 1767225600,
+      "body": "{\"rule\":\"order_status\",\"request_id\":\"r-1\",\"fields\":{\"order_number\":\"KHWLILZLL\",\"email\":\"pub@prestashop.com\"}}",
+      "verify_with": [
+        "test-secret-0123456789abcdef0123456789abcdef"
+      ],
+      "expect": "signature",
+      "header": "t=1767225600,v1=ad5dc347c0b87c03be3a1d225156f6a67defa7f1ef0f291aa2ad9be372205fd4,v1=8a7d86779a9599a3aa25e576c76fe60f8585806870af08c87c18c0a6a3db0f12"
+    },
+    {
+      "case": "four v1, over the cap of three, one valid",
+      "label": "emporiqa-to-plugin",
+      "store_id": "st_7Kq2mXa9",
+      "t": 1767225600,
+      "body": "{\"rule\":\"order_status\",\"request_id\":\"r-1\",\"fields\":{\"order_number\":\"KHWLILZLL\",\"email\":\"pub@prestashop.com\"}}",
+      "verify_with": [
+        "test-secret-0123456789abcdef0123456789abcdef"
+      ],
+      "expect": "signature",
+      "header": "t=1767225600,v1=8a7d86779a9599a3aa25e576c76fe60f8585806870af08c87c18c0a6a3db0f12,v1=8a7d86779a9599a3aa25e576c76fe60f8585806870af08c87c18c0a6a3db0f12,v1=ad5dc347c0b87c03be3a1d225156f6a67defa7f1ef0f291aa2ad9be372205fd4,v1=b7e6ddc78238088ff518d1f1d7466c60de9fb2ea60b584bb4a573c6e89221592"
+    },
+    {
+      "case": "three v1, at the cap, last valid",
+      "label": "emporiqa-to-plugin",
+      "store_id": "st_7Kq2mXa9",
+      "t": 1767225600,
+      "body": "{\"rule\":\"order_status\",\"request_id\":\"r-1\",\"fields\":{\"order_number\":\"KHWLILZLL\",\"email\":\"pub@prestashop.com\"}}",
+      "verify_with": [
+        "test-secret-0123456789abcdef0123456789abcdef"
+      ],
+      "expect": "ok",
+      "header": "t=1767225600,v1=8a7d86779a9599a3aa25e576c76fe60f8585806870af08c87c18c0a6a3db0f12,v1=ad5dc347c0b87c03be3a1d225156f6a67defa7f1ef0f291aa2ad9be372205fd4,v1=b7e6ddc78238088ff518d1f1d7466c60de9fb2ea60b584bb4a573c6e89221592"
+    },
+    {
+      "case": "one malformed v1 refuses the header",
+      "label": "emporiqa-to-plugin",
+      "store_id": "st_7Kq2mXa9",
+      "t": 1767225600,
+      "body": "{\"rule\":\"order_status\",\"request_id\":\"r-1\",\"fields\":{\"order_number\":\"KHWLILZLL\",\"email\":\"pub@prestashop.com\"}}",
+      "verify_with": [
+        "test-secret-0123456789abcdef0123456789abcdef"
+      ],
+      "expect": "signature",
+      "header": "t=1767225600,v1=AD5DC347C0B87C03BE3A1D225156F6A67DEFA7F1EF0F291AA2AD9BE372205FD4,v1=b7e6ddc78238088ff518d1f1d7466c60de9fb2ea60b584bb4a573c6e89221592"
+    },
+    {
+      "case": "duplicated t with two v1",
+      "label": "emporiqa-to-plugin",
+      "store_id": "st_7Kq2mXa9",
+      "t": 1767225600,
+      "body": "{\"rule\":\"order_status\",\"request_id\":\"r-1\",\"fields\":{\"order_number\":\"KHWLILZLL\",\"email\":\"pub@prestashop.com\"}}",
+      "verify_with": [
+        "test-secret-0123456789abcdef0123456789abcdef"
+      ],
+      "expect": "signature",
+      "header": "t=1767225600,t=1767225600,v1=ad5dc347c0b87c03be3a1d225156f6a67defa7f1ef0f291aa2ad9be372205fd4,v1=b7e6ddc78238088ff518d1f1d7466c60de9fb2ea60b584bb4a573c6e89221592"
+    }
+  ]
+}

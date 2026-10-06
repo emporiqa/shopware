@@ -165,10 +165,39 @@ class ConfigServiceTest extends TestCase
         $this->assertTrue($this->configService->isCartEnabled('any-channel'));
     }
 
-    public function testIsOrderTrackingEnabledAlwaysReturnsTrue(): void
+    public function testOrderTrackingStaysOnWhenNothingIsStored(): void
     {
+        $this->systemConfig->method('get')->with('EmporiqaIntegration.config.orderTracking')->willReturn(null);
+
         $this->assertTrue($this->configService->isOrderTrackingEnabled());
         $this->assertTrue($this->configService->isOrderTrackingEnabled('any-channel'));
+    }
+
+    public function testOrderTrackingCanBeSwitchedOff(): void
+    {
+        $this->systemConfig->method('get')->with('EmporiqaIntegration.config.orderTracking')->willReturn(false);
+
+        $this->assertFalse($this->configService->isOrderTrackingEnabled());
+    }
+
+    public function testSaveRulesStatusKeepsOnlyValidRuleKeys(): void
+    {
+        $saved = [];
+        $this->systemConfig->method('set')->willReturnCallback(function (string $key, $value) use (&$saved): void {
+            $saved[$key] = $value;
+        });
+
+        $this->configService->saveRulesStatus(['rules_available' => true, 'live_rules' => ['order_status', '<script>', 7]]);
+
+        $this->assertTrue($saved['EmporiqaIntegration.config.rulesAvailable']);
+        $this->assertSame('["order_status"]', $saved['EmporiqaIntegration.config.liveRules']);
+    }
+
+    public function testSaveRulesStatusIgnoresAnAnswerWithoutTheKey(): void
+    {
+        $this->systemConfig->expects($this->never())->method('set');
+
+        $this->configService->saveRulesStatus(['events' => []]);
     }
 
     public function testGetChannelMappingParsesJson(): void

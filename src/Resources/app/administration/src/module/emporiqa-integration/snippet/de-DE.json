@@ -53,7 +53,8 @@
                 "noProductFound": "Keine aktiven Produkte zum Testen gefunden. Verwende Test-Payload.",
                 "copyUrl": "URL kopieren",
                 "orderTrackingUrlHelp": "Kopieren Sie diese URL in Ihr Emporiqa-Dashboard unter „Settings“ → „Integration“ → „Order tracking“. Das Dashboard ist englischsprachig.",
-                "testSuccess": "Verbindung erfolgreich."
+                "testSuccess": "Verbindung erfolgreich.",
+                "clockSkew": "Die Uhr Ihres Servers geht um {minutes} Minuten falsch; Emporiqa lehnt Signaturen ab, die mehr als 5 Minuten abweichen. Bitten Sie Ihren Hoster, NTP zu aktivieren."
             },
             "syncSettings": {
                 "syncProducts": "Produkte synchronisieren",
@@ -63,7 +64,9 @@
                 "brandSourceHelp": "Wählen Sie, welche Eigenschaftsgruppe als Markenquelle verwendet werden soll, oder behalten Sie die Standardeinstellung bei."
             },
             "orderTracking": {
-                "urlLabel": "Bestellverfolgungs-URL"
+                "urlLabel": "Bestellverfolgungs-URL",
+                "legacyLabel": "Alte Bestellverfolgung (veraltet)",
+                "legacyHelp": "Ersetzt durch die Regel „Order status“ oben. Zum Ausschalten entfernen Sie zuerst ihre Adresse in Ihrem Emporiqa-Dashboard („Settings“ → „Integration“ → „For your developer“ → „Order tracking API URL“), schalten Sie sie dann hier aus und klicken Sie auf „Speichern“."
             },
             "advanced": {
                 "title": "Erweitert",
@@ -133,6 +136,20 @@
             "notConnected": "Noch nicht verbunden.",
             "description": "Öffnen Sie die Emporiqa-Seite, um Ihren Shop mit einem Klick zu verbinden, die synchronisierten Verkaufskanäle und Sprachen zu wählen und Ihren Katalog zu senden.",
             "button": "Emporiqa-Einstellungen öffnen"
+        },
+        "rules": {
+            "title": "Fertige Regeln",
+            "intro": "Regeln sagen dem Chat, was er tun soll, wenn ein Kunde nach etwas Bestimmtem fragt. Die Regel unten liest Ihre Shopware-Bestellungen über dieses Plugin. Klicken Sie auf „In Emporiqa öffnen“, um sie dort zu testen und einzuschalten. Regeln, die Ihren Shop nicht brauchen, etwa Rücksendeanfragen, legen Sie in Emporiqa unter „Settings“ → „Rules“ an. Das Dashboard ist englischsprachig.",
+            "suggestLegacyOff": "Die Regel „Order status“ ist eingeschaltet, die alte Bestellverfolgung unter „Erweitert“ wird also nicht mehr gebraucht. Entfernen Sie zuerst ihre Adresse in Ihrem Emporiqa-Dashboard („Settings“ → „Integration“ → „For your developer“ → „Order tracking API URL“), schalten Sie sie dann unter „Erweitert“ aus und klicken Sie auf „Speichern“.",
+            "addressLabel": "Adresse für den Bestellstatus",
+            "addressHelp": "Emporiqa trägt sie für Sie ein, wenn Sie die Regel „Order status“ hinzufügen. Falls Sie doch einmal nach der Adresse gefragt werden, verwenden Sie diese.",
+            "addressHttps": "Öffnen Sie diese Seite über https, um die Adresse zu sehen: Emporiqa ruft nur https-Adressen auf.",
+            "orderStatus": "Bestellstatus",
+            "orderStatusDescription": "Beantwortet „Wo ist meine Bestellung?“ aus Ihren Shopware-Bestellungen. Ein in Ihrem Shop angemeldeter Kunde nennt nur die Bestellnummer; ein Gast zusätzlich die E-Mail-Adresse der Bestellung.",
+            "on": "Ein",
+            "notAdded": "Nicht hinzugefügt",
+            "openInEmporiqa": "In Emporiqa öffnen",
+            "stateHelp": "„Ein“ und „Nicht hinzugefügt“ zeigen, was Emporiqa bei der letzten Verbindung oder beim letzten Verbindungstest (Tab „Synchronisierung“) gemeldet hat. Führen Sie nach einer Änderung an einer Regel den Verbindungstest aus, um sie zu aktualisieren."
         }
     }
 }

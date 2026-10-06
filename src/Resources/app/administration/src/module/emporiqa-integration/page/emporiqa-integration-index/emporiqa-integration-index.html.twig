@@ -167,23 +167,86 @@
                         :helpText="$t('emporiqa-integration.settings.connection.webhookSecretHelp')"
                     />
 
+                    {# Order tracking keeps its place until Emporiqa offers ready-made rules #}
+                    <template v-if="!rulesAvailable">
+                        <div class="emporiqa-integration-index__url-field">
+                            <sw-text-field
+                                :value="orderTrackingUrl"
+                                disabled
+                                :label="$t('emporiqa-integration.settings.orderTracking.urlLabel')"
+                            />
+                            <sw-button
+                                size="small"
+                                @click="copyOrderTrackingUrl"
+                            >
+                                {{ $t('emporiqa-integration.settings.connection.copyUrl') }}
+                            </sw-button>
+                        </div>
+                        <p class="emporiqa-integration-index__help-text">
+                            {{ $t('emporiqa-integration.settings.connection.orderTrackingUrlHelp') }}
+                        </p>
+                    </template>
+
+                </template>
+            </sw-card>
+            {% endblock %}
+
+            {# Ready-made rules: shown once Emporiqa has said this store has them #}
+            {% block emporiqa_integration_rules %}
+            <sw-card v-if="rulesAvailable" :title="$t('emporiqa-integration.rules.title')">
+                <template #default>
+                    <p class="emporiqa-integration-index__help-text">
+                        {{ $t('emporiqa-integration.rules.intro') }}
+                    </p>
+
+                    <sw-alert
+                        v-if="orderStatusLive && settings.orderTracking"
+                        variant="info"
+                        class="emporiqa-integration-index__save-alert"
+                    >
+                        {{ $t('emporiqa-integration.rules.suggestLegacyOff') }}
+                    </sw-alert>
+
                     <div class="emporiqa-integration-index__url-field">
                         <sw-text-field
-                            :value="orderTrackingUrl"
+                            :value="actionsUrl"
                             disabled
-                            :label="$t('emporiqa-integration.settings.orderTracking.urlLabel')"
+                            :label="$t('emporiqa-integration.rules.addressLabel')"
                         />
                         <sw-button
                             size="small"
-                            @click="copyOrderTrackingUrl"
+                            :disabled="!actionsUrl"
+                            @click="copyActionsUrl"
                         >
                             {{ $t('emporiqa-integration.settings.connection.copyUrl') }}
                         </sw-button>
                     </div>
                     <p class="emporiqa-integration-index__help-text">
-                        {{ $t('emporiqa-integration.settings.connection.orderTrackingUrlHelp') }}
+                        {{ actionsUrl ? $t('emporiqa-integration.rules.addressHelp') : $t('emporiqa-integration.rules.addressHttps') }}
                     </p>
 
+                    <div class="emporiqa-integration-index__rule">
+                        <div class="emporiqa-integration-index__rule-text">
+                            <strong>{{ $t('emporiqa-integration.rules.orderStatus') }}</strong>
+                            <p class="emporiqa-integration-index__help-text">
+                                {{ $t('emporiqa-integration.rules.orderStatusDescription') }}
+                            </p>
+                        </div>
+                        <div class="emporiqa-integration-index__rule-state">
+                            <span
+                                class="emporiqa-integration-index__rule-badge"
+                                :class="{ 'is--on': orderStatusLive }"
+                            >
+                                {{ orderStatusLive ? $t('emporiqa-integration.rules.on') : $t('emporiqa-integration.rules.notAdded') }}
+                            </span>
+                            <sw-button size="small" @click="openExternal(orderStatusRuleUrl)">
+                                {{ $t('emporiqa-integration.rules.openInEmporiqa') }}
+                            </sw-button>
+                        </div>
+                    </div>
+                    <p class="emporiqa-integration-index__help-text">
+                        {{ $t('emporiqa-integration.rules.stateHelp') }}
+                    </p>
                 </template>
             </sw-card>
             {% endblock %}
@@ -273,6 +336,33 @@
                         :helpText="$t('emporiqa-integration.settings.advanced.webhookUrlHelp')"
                     />
 
+                    {# The 1.2 order tracking, deprecated where ready-made rules are offered #}
+                    <template v-if="rulesAvailable">
+                        <sw-switch-field
+                            :value="settings.orderTracking"
+                            @input="setSetting('orderTracking', $event)"
+                            @update:value="setSetting('orderTracking', $event)"
+                            :label="$t('emporiqa-integration.settings.orderTracking.legacyLabel')"
+                            bordered
+                        />
+                        <div class="emporiqa-integration-index__url-field">
+                            <sw-text-field
+                                :value="orderTrackingUrl"
+                                disabled
+                                :label="$t('emporiqa-integration.settings.orderTracking.urlLabel')"
+                            />
+                            <sw-button
+                                size="small"
+                                @click="copyOrderTrackingUrl"
+                            >
+                                {{ $t('emporiqa-integration.settings.connection.copyUrl') }}
+                            </sw-button>
+                        </div>
+                        <p class="emporiqa-integration-index__help-text emporiqa-integration-index__help-text--field-end">
+                            {{ $t('emporiqa-integration.settings.orderTracking.legacyHelp') }}
+                        </p>
+                    </template>
+
                     <sw-number-field
                         :value="settings.batchSize"
                         @input="setSetting('batchSize', $event)"
@@ -337,6 +427,14 @@
                         class="emporiqa-integration-index__result-alert"
                     >
                         {{ connectionResult.success ? $t('emporiqa-integration.settings.connection.testSuccess') : connectionResult.message }}
+                    </sw-alert>
+
+                    <sw-alert
+                        v-if="connectionResult && connectionResult.success && connectionResult.clock_skew_minutes"
+                        :variant="alertVariants.warning"
+                        class="emporiqa-integration-index__result-alert"
+                    >
+                        {{ $t('emporiqa-integration.settings.connection.clockSkew', { minutes: connectionResult.clock_skew_minutes }) }}
                     </sw-alert>
                 </template>
             </sw-card>

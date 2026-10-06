@@ -112,6 +112,10 @@
         margin-top: 4px;
         font-size: 13px;
         color: var(--color-text-secondary, #52667a);
+
+        &--field-end {
+            margin-bottom: 22px;
+        }
     }
 
     &__result-alert {
@@ -277,6 +281,40 @@
     &__url-field {
         max-width: 600px;
         margin-top: 16px;
+    }
+
+    &__rule {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 24px;
+        padding-top: 16px;
+        border-top: 1px solid var(--color-gray-300, #d1d9e0);
+    }
+
+    &__rule-text {
+        flex: 1 1 320px;
+    }
+
+    &__rule-state {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+
+    &__rule-badge {
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 13px;
+        background: var(--color-gray-100, #f0f2f5);
+        color: var(--color-text-secondary, #52667a);
+
+        &.is--on {
+            background: var(--color-emerald-50, #e6f7ef);
+            color: var(--color-emerald-700, #1a7f4b);
+        }
     }
 
     &__language-checkboxes {

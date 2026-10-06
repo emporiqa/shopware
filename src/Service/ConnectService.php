@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Emporiqa\ShopwarePlugin\Service;
 
+use Doctrine\DBAL\Connection;
 use Emporiqa\ShopwarePlugin\EmporiqaIntegration;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Psr\Log\LoggerInterface;
+use Shopware\Core\Defaults;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 
 /**
@@ -15,8 +17,12 @@ use Shopware\Core\System\SystemConfig\SystemConfigService;
  *
  * initiate(): mint state + PKCE verifier, persist them as a single-use
  * pending nonce in the system config, and build the /connect/start URL.
- * exchange(): verify state, consume the nonce, then trade the one-time
+ * exchange(): verify state, claim the nonce, then trade the one-time
  * code + verifier for {store_id, webhook_secret, webhook_url} server-to-server.
+ *
+ * While the exchange is in flight Emporiqa proves the shop origin by asking
+ * the verify action for HMAC(verifier, nonce) (ActionController), so the
+ * claimed nonce is kept, marked "exchanging", until the exchange returns.
  */
 class ConnectService implements ConnectServiceInterface
 {
@@ -26,6 +32,10 @@ class ConnectService implements ConnectServiceInterface
     private const RETURN_PATH = '/admin#/emporiqa/connect/callback';
     private const VERIFIER_LENGTH = 64;
     private const VERIFIER_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    private const EXCHANGING_TTL_SECONDS = 120;
+
+    /** Path of the rule endpoints under a storefront domain; Emporiqa appends actions/<rule>. */
+    public const ACTIONS_PATH = '/emporiqa/';
 
     private readonly Client $client;
 
@@ -34,6 +44,7 @@ class ConnectService implements ConnectServiceInterface
         private readonly ConfigServiceInterface $config,
         private readonly LoggerInterface $logger,
         ?Client $client = null,
+        private readonly ?Connection $connection = null,
     ) {
         $this->client = $client ?? new Client();
     }
@@ -78,7 +89,7 @@ class ConnectService implements ConnectServiceInterface
             return ['success' => false, 'error' => 'Missing code or state.'];
         }
 
-        $raw = (string) $this->systemConfig->get(self::PENDING_KEY);
+        $raw = $this->readPendingRaw();
         $pending = $raw !== '' ? json_decode($raw, true) : null;
 
         if (
@@ -101,9 +112,15 @@ class ConnectService implements ConnectServiceInterface
             return ['success' => false, 'error' => 'The connection attempt expired. Click Connect to start again.'];
         }
 
-        // Single-use: consume the nonce before the network call so a replayed
-        // callback can never reuse the verifier, even if the exchange fails.
-        $this->systemConfig->delete(self::PENDING_KEY);
+        // Single-use: a replayed callback or a second tab finds it claimed.
+        $alreadyUsed = ['success' => false, 'error' => 'This connection link was already used. Click Connect to start again.'];
+        if (isset($pending['exchangingAt'])) {
+            return $alreadyUsed;
+        }
+        $pending['exchangingAt'] = time();
+        if (!$this->claimPending($raw, json_encode($pending, \JSON_THROW_ON_ERROR))) {
+            return $alreadyUsed;
+        }
 
         try {
             $response = $this->client->request('POST', $this->baseUrl() . '/connect/exchange', [
@@ -111,19 +128,25 @@ class ConnectService implements ConnectServiceInterface
                     'code' => $code,
                     'code_verifier' => $pending['verifier'],
                     'shop_origin' => $pending['origin'],
+                    'actions_base_url' => $this->actionsBaseUrl($pending['origin']),
                 ],
                 'headers' => [
                     'Accept' => 'application/json',
                     'User-Agent' => 'Emporiqa-Shopware/' . EmporiqaIntegration::PLUGIN_VERSION,
                 ],
                 'connect_timeout' => 5,
-                'timeout' => 15,
+                // Emporiqa's origin proof runs inside the exchange (at most 4 s);
+                // past this timeout the shop would keep its old secret while
+                // Emporiqa has already issued a new one.
+                'timeout' => 20,
                 'http_errors' => false,
             ]);
         } catch (GuzzleException $e) {
             $this->logger->warning('[Emporiqa] Connect exchange request failed: ' . $e->getMessage());
 
             return ['success' => false, 'error' => 'Could not reach Emporiqa: ' . $e->getMessage()];
+        } finally {
+            $this->systemConfig->delete(self::PENDING_KEY);
         }
 
         $statusCode = $response->getStatusCode();
@@ -158,10 +181,124 @@ class ConnectService implements ConnectServiceInterface
 
         $this->systemConfig->set(self::CONFIG_PREFIX . 'storeId', $storeId);
         $this->systemConfig->set(self::CONFIG_PREFIX . 'webhookSecret', $webhookSecret);
+        $this->config->saveRulesStatus(\is_array($parsed) ? $parsed : []);
 
         $this->logger->info('[Emporiqa] Shop connected via one-click connect (store id ' . $storeId . ').');
 
         return ['success' => true, 'storeId' => $storeId];
+    }
+
+    public function exchangingVerifier(string $state): ?string
+    {
+        $raw = $this->readPendingRaw();
+        $pending = $raw !== '' ? json_decode($raw, true) : null;
+        if (
+            $state === ''
+            || !\is_array($pending)
+            || !\is_string($pending['state'] ?? null)
+            || !\is_string($pending['verifier'] ?? null)
+            || !isset($pending['exchangingAt'])
+            || (time() - (int) $pending['exchangingAt']) > self::EXCHANGING_TTL_SECONDS
+            || !hash_equals($pending['state'], $state)
+        ) {
+            return null;
+        }
+
+        return $pending['verifier'];
+    }
+
+    public function actionsBaseUrl(string $origin): string
+    {
+        $host = strtolower((string) parse_url($origin, \PHP_URL_HOST));
+        $best = null;
+        foreach ($this->storefrontDomainUrls() as $url) {
+            $parts = parse_url($url);
+            if (
+                !\is_array($parts)
+                || strtolower($parts['scheme'] ?? '') !== 'https'
+                || strtolower($parts['host'] ?? '') !== $host
+                || isset($parts['port'])
+            ) {
+                continue;
+            }
+            $path = rtrim($parts['path'] ?? '', '/');
+            if ($best === null || \strlen($path) < \strlen($best)) {
+                $best = $path;
+            }
+        }
+
+        // No domain on this host: the bare origin, which only works when a
+        // storefront domain is served there.
+        return 'https://' . $host . ($best ?? '') . self::ACTIONS_PATH;
+    }
+
+    /**
+     * Mark the pending handshake as exchanging, only if it is still exactly
+     * the one read: of two callbacks racing with the same state, one wins.
+     */
+    private function claimPending(string $expected, string $claimed): bool
+    {
+        if ($this->connection === null) {
+            $this->systemConfig->set(self::PENDING_KEY, $claimed);
+
+            return true;
+        }
+
+        return $this->connection->executeStatement(
+            'UPDATE `system_config` SET `configuration_value` = :claimed, `updated_at` = :now'
+            . ' WHERE `configuration_key` = :key AND `sales_channel_id` IS NULL AND JSON_UNQUOTE(JSON_EXTRACT(`configuration_value`, \'$._value\')) = :expected',
+            [
+                'claimed' => json_encode(['_value' => $claimed], \JSON_THROW_ON_ERROR),
+                'now' => (new \DateTimeImmutable())->format(Defaults::STORAGE_DATE_TIME_FORMAT),
+                'key' => self::PENDING_KEY,
+                'expected' => $expected,
+            ],
+        ) === 1;
+    }
+
+    /**
+     * The pending handshake straight from the database: the verify request
+     * runs in another PHP process while the exchange waits, and must not
+     * read a cached copy from before the claim.
+     */
+    private function readPendingRaw(): string
+    {
+        if ($this->connection === null) {
+            return (string) $this->systemConfig->get(self::PENDING_KEY);
+        }
+        $stored = $this->connection->fetchOne(
+            'SELECT `configuration_value` FROM `system_config` WHERE `configuration_key` = :key AND `sales_channel_id` IS NULL',
+            ['key' => self::PENDING_KEY],
+        );
+        $decoded = \is_string($stored) ? json_decode($stored, true) : null;
+
+        return \is_array($decoded) && \is_string($decoded['_value'] ?? null) ? $decoded['_value'] : '';
+    }
+
+    /**
+     * URLs of the domains of active storefront sales channels.
+     *
+     * @return list<string>
+     */
+    private function storefrontDomainUrls(): array
+    {
+        if ($this->connection === null) {
+            return [];
+        }
+        try {
+            $urls = $this->connection->fetchFirstColumn(
+                'SELECT d.`url` FROM `sales_channel_domain` d'
+                . ' INNER JOIN `sales_channel` s ON s.`id` = d.`sales_channel_id`'
+                . ' WHERE s.`active` = 1 AND s.`type_id` = :type',
+                ['type' => hex2bin(Defaults::SALES_CHANNEL_TYPE_STOREFRONT)],
+            );
+        } catch (\Throwable $e) {
+            $this->logger->warning('[Emporiqa] Could not read the storefront domains: ' . $e->getMessage());
+
+            return [];
+        }
+
+        return array_values(array_filter($urls, 'is_string'));
     }
 
     /**

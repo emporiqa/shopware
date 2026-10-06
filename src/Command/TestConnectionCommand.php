@@ -7,10 +7,10 @@ namespace Emporiqa\ShopwarePlugin\Command;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\ProductFormatterInterface;
 use Emporiqa\ShopwarePlugin\Service\SyncServiceInterface;
+use Emporiqa\ShopwarePlugin\Service\SystemContext;
 use Emporiqa\ShopwarePlugin\Service\WebhookClientInterface;
 use Shopware\Core\Content\Product\ProductCollection;
 use Shopware\Core\Content\Product\ProductEntity;
-use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
@@ -97,7 +97,7 @@ class TestConnectionCommand extends Command
             $childrenCriteria->addAssociation('seoUrls');
             $childrenCriteria->addAssociation('translations');
 
-            $context = Context::createCLIContext();
+            $context = SystemContext::create();
             $products = $this->productRepository->search($criteria, $context)->getEntities();
 
             $product = null;

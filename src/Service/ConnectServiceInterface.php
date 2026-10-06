@@ -21,4 +21,18 @@ interface ConnectServiceInterface
      * @return array{success: bool, storeId?: string, error?: string}
      */
     public function exchange(string $code, string $state): array;
+
+    /**
+     * The PKCE verifier of the exchange in flight for $state, else null.
+     * Only an exchange this shop started and is still waiting on answers
+     * Emporiqa's origin proof.
+     */
+    public function exchangingVerifier(string $state): ?string;
+
+    /**
+     * Base URL of the ready-made rule endpoints, sent at connect and shown
+     * as the Order status address: the shortest https storefront domain on
+     * $origin's host plus /emporiqa/ (Emporiqa appends actions/<rule>).
+     */
+    public function actionsBaseUrl(string $origin): string;
 }

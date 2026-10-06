@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Emporiqa\ShopwarePlugin\Tests\Service;
 
+use Emporiqa\ShopwarePlugin\EmporiqaIntegration;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
+use Emporiqa\ShopwarePlugin\Service\SignatureHelper;
 use Emporiqa\ShopwarePlugin\Service\WebhookClient;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
@@ -117,44 +119,6 @@ class WebhookClientTest extends TestCase
         $this->assertFalse(WebhookClient::verifySignature('tampered-payload', $signature, $secret));
     }
 
-    public function testGenerateUserTokenFormat(): void
-    {
-        $userId = 'user-abc-123';
-        $secret = 'webhook-secret';
-
-        $token = WebhookClient::generateUserToken($userId, $secret);
-
-        $this->assertStringContainsString('.', $token);
-
-        $parts = explode('.', $token);
-        $this->assertCount(2, $parts);
-
-        // The first part is base64url-encoded JSON
-        $decodedPayload = base64_decode(strtr($parts[0], '-_', '+/'));
-        $payloadData = json_decode($decodedPayload, true);
-
-        $this->assertIsArray($payloadData);
-        $this->assertArrayHasKey('uid', $payloadData);
-        $this->assertArrayHasKey('ts', $payloadData);
-        $this->assertSame($userId, $payloadData['uid']);
-        $this->assertIsInt($payloadData['ts']);
-    }
-
-    public function testGenerateUserTokenSignatureIsValid(): void
-    {
-        $userId = 'customer-456';
-        $secret = 'my-secret';
-
-        $token = WebhookClient::generateUserToken($userId, $secret);
-        $parts = explode('.', $token);
-
-        $encodedPayload = $parts[0];
-        $signature = $parts[1];
-        $expectedSignature = hash_hmac('sha256', $encodedPayload, $secret);
-
-        $this->assertSame($expectedSignature, $signature);
-    }
-
     public function testTestConnectionReturnsErrorWhenNotConfigured(): void
     {
         $this->config
@@ -257,6 +221,73 @@ class WebhookClientTest extends TestCase
         $this->assertCount(1, $result['dry_run']['events']);
         $this->assertSame('ABC-123', $result['dry_run']['events'][0]['sku']);
         $this->assertSame(['en', 'de'], $result['dry_run']['events'][0]['languages_detected']);
+    }
+
+    public function testSendSignsBothSchemesWithAFreshTimestampPerAttempt(): void
+    {
+        $history = [];
+        $client = $this->createClientWithMock([new Response(503), new Response(200)], $history);
+        $this->config->method('getFullWebhookUrl')->willReturn('https://emporiqa.com/webhooks/sync/st_1/');
+        $this->config->method('getWebhookSecret')->willReturn('test-secret');
+        $this->config->method('getStoreId')->willReturn('st_1');
+
+        $this->assertTrue((new WebhookClient($this->config, $this->logger, $client))->sendEvent('product.updated', ['id' => 1]));
+
+        $this->assertCount(2, $history);
+        foreach ($history as $entry) {
+            $request = $entry['request'];
+            $body = (string) $request->getBody();
+            $this->assertSame(hash_hmac('sha256', $body, 'test-secret'), $request->getHeaderLine('X-Webhook-Signature'));
+            $this->assertSame(
+                'ok',
+                SignatureHelper::verifyHeader($request->getHeaderLine('X-Emporiqa-Webhook-Signature'), $body, 'test-secret', 'st_1', SignatureHelper::LABEL_INBOUND),
+            );
+            $this->assertSame('shopware/' . EmporiqaIntegration::PLUGIN_VERSION, $request->getHeaderLine('X-Emporiqa-Plugin-Version'));
+        }
+    }
+
+    public function testTestConnectionKeepsTheRulesStatus(): void
+    {
+        $client = $this->createClientWithMock([
+            new Response(200, [], json_encode(['events' => [], 'rules_available' => true, 'live_rules' => ['order_status']])),
+        ]);
+        $this->config->method('isConfigured')->willReturn(true);
+        $this->config->method('getFullWebhookUrl')->willReturn('https://emporiqa.com/webhooks/sync/store-1/');
+        $this->config->method('getWebhookSecret')->willReturn('test-secret');
+        $this->config->expects($this->once())->method('saveRulesStatus')
+            ->with($this->callback(fn (array $answer) => $answer['rules_available'] === true && $answer['live_rules'] === ['order_status']));
+
+        $this->assertTrue((new WebhookClient($this->config, $this->logger, $client))->testConnection()['success']);
+    }
+
+    public function testTestConnectionWarnsWhenTheClockIsOffByMoreThanTwoMinutes(): void
+    {
+        $client = $this->createClientWithMock([
+            new Response(200, ['Date' => gmdate('D, d M Y H:i:s', time() - 600) . ' GMT'], '{"events":[]}'),
+        ]);
+        $this->config->method('isConfigured')->willReturn(true);
+        $this->config->method('getFullWebhookUrl')->willReturn('https://emporiqa.com/webhooks/sync/store-1/');
+        $this->config->method('getWebhookSecret')->willReturn('test-secret');
+
+        $result = (new WebhookClient($this->config, $this->logger, $client))->testConnection();
+
+        $this->assertTrue($result['success']);
+        $this->assertSame(10, $result['clock_skew_minutes']);
+        $this->assertStringContainsString('clock is off by 10 minutes', $result['message']);
+    }
+
+    public function testTestConnectionDoesNotWarnForASmallSkew(): void
+    {
+        $client = $this->createClientWithMock([
+            new Response(200, ['Date' => gmdate('D, d M Y H:i:s', time() - 30) . ' GMT'], '{"events":[]}'),
+        ]);
+        $this->config->method('isConfigured')->willReturn(true);
+        $this->config->method('getFullWebhookUrl')->willReturn('https://emporiqa.com/webhooks/sync/store-1/');
+        $this->config->method('getWebhookSecret')->willReturn('test-secret');
+
+        $result = (new WebhookClient($this->config, $this->logger, $client))->testConnection();
+
+        $this->assertArrayNotHasKey('clock_skew_minutes', $result);
     }
 
     public function testTestConnectionHandles401(): void
@@ -451,6 +482,30 @@ class WebhookClientTest extends TestCase
         $webhookClient->sendBatchEvents([['type' => 'product.created', 'data' => []]]);
 
         $this->assertSame('Check your webhook secret', $webhookClient->getLastError());
+    }
+
+    /**
+     * The platform's hint says what to do next (wait for a stale sync
+     * session, shrink the batch): it is shown after the error, not dropped.
+     */
+    public function testGetLastErrorKeepsTheHintAfterTheError(): void
+    {
+        $client = $this->createClientWithMock([
+            new Response(409, [], json_encode([
+                'error' => 'Sync session already active',
+                'active_session_id' => 'shopware-products-abc',
+                'entity' => 'products',
+                'hint' => 'A sync is already in progress. Stale sessions (older than 1 hour) are replaced automatically on retry.',
+            ])),
+        ]);
+        $webhookClient = $this->webhookClientWithFailingRequest($client);
+
+        $webhookClient->sendBatchEvents([['type' => 'product.created', 'data' => []]]);
+
+        $this->assertSame(
+            'Sync session already active. A sync is already in progress. Stale sessions (older than 1 hour) are replaced automatically on retry.',
+            $webhookClient->getLastError(),
+        );
     }
 
     public function testGetLastErrorSetOnTransportException(): void

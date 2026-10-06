@@ -53,7 +53,8 @@
                 "noProductFound": "No active products found to test with. Using test payload.",
                 "copyUrl": "Copy URL",
                 "orderTrackingUrlHelp": "Copy this URL into your Emporiqa dashboard under Settings, Integration, Order tracking.",
-                "testSuccess": "Connection successful."
+                "testSuccess": "Connection successful.",
+                "clockSkew": "Your server clock is off by {minutes} minutes; Emporiqa refuses signatures more than 5 minutes off. Ask your host to enable NTP."
             },
             "syncSettings": {
                 "syncProducts": "Sync Products",
@@ -63,7 +64,9 @@
                 "brandSourceHelp": "Select which property group to use as the brand source, or keep the default to use the product manufacturer."
             },
             "orderTracking": {
-                "urlLabel": "Order Tracking URL"
+                "urlLabel": "Order Tracking URL",
+                "legacyLabel": "Old order tracking (deprecated)",
+                "legacyHelp": "Replaced by the Order status rule above. To switch it off, first remove its address in your Emporiqa dashboard (Settings > Integration > For your developer > Order tracking API URL), then switch this off and click Save."
             },
             "advanced": {
                 "title": "Advanced",
@@ -133,6 +136,20 @@
             "notConnected": "Not connected yet.",
             "description": "Open the Emporiqa page to connect your shop in one click, choose the synced sales channels and languages and send your catalogue.",
             "button": "Open Emporiqa settings"
+        },
+        "rules": {
+            "title": "Ready-made rules",
+            "intro": "Rules tell the chat what to do when a shopper asks for something specific. The rule below reads your Shopware orders through this plugin. Click Open in Emporiqa to test it and switch it on there. Rules that do not need your shop, such as return requests, are added in Emporiqa under Settings > Rules.",
+            "suggestLegacyOff": "The Order status rule is on, so the old order tracking under Advanced is no longer needed. First remove its address in your Emporiqa dashboard (Settings > Integration > For your developer > Order tracking API URL), then switch it off under Advanced and click Save.",
+            "addressLabel": "Order status address",
+            "addressHelp": "Emporiqa fills this in for you when you add the Order status rule. If it ever asks for the address, use this one.",
+            "addressHttps": "Open this page over https to see the address: Emporiqa only calls https addresses.",
+            "orderStatus": "Order status",
+            "orderStatusDescription": "Answers \"Where is my order?\" from your Shopware orders. A shopper signed in to your shop only gives the order number; a guest also gives the email used for the order.",
+            "on": "On",
+            "notAdded": "Not added",
+            "openInEmporiqa": "Open in Emporiqa",
+            "stateHelp": "On and Not added show what Emporiqa said at your last connect or Test connection (Sync tab). Run Test connection after changing a rule to refresh them."
         }
     }
 }

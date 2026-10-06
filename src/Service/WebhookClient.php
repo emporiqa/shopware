@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Emporiqa\ShopwarePlugin\Service;
 
+use Emporiqa\ShopwarePlugin\EmporiqaIntegration;
 use Emporiqa\ShopwarePlugin\Exception\RateLimitException;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
@@ -12,6 +13,12 @@ use Psr\Log\LoggerInterface;
 
 class WebhookClient implements WebhookClientInterface
 {
+    /**
+     * Test connection warns from 2 minutes, well inside the 5 minutes
+     * Emporiqa allows, so a drifting clock is noticed before syncs fail.
+     */
+    private const CLOCK_SKEW_WARN_SECONDS = 120;
+
     private readonly Client $client;
 
     private ?string $lastError = null;
@@ -112,16 +119,37 @@ class WebhookClient implements WebhookClientInterface
             $body = (string) $response->getBody();
             $parsed = json_decode($body, true);
 
+            $clockSkew = self::clockSkew($response->getHeaderLine('Date'), time());
+            $clockWarning = $clockSkew !== null && abs($clockSkew) > self::CLOCK_SKEW_WARN_SECONDS;
+            $skewMinutes = $clockSkew !== null ? max(1, (int) round(abs($clockSkew) / 60)) : 0;
+            $skewText = 'Your server clock is off by ' . $skewMinutes . ' minutes; Emporiqa refuses signatures more than 5 minutes off. Ask your host to enable NTP.';
+
             if (\in_array($statusCode, [200, 201, 202], true)) {
-                return [
+                // A connected shop learns here, without reconnecting, whether
+                // Emporiqa offers ready-made rules and which are live.
+                if (\is_array($parsed)) {
+                    $this->config->saveRulesStatus($parsed);
+                }
+
+                $result = [
                     'success' => true,
                     'message' => 'Connection successful!',
                     'dry_run' => \is_array($parsed) ? $parsed : [],
                 ];
+                if ($clockWarning) {
+                    $result['clock_skew_minutes'] = $skewMinutes;
+                    $result['message'] .= ' ' . $skewText;
+                }
+
+                return $result;
             }
 
             if ($statusCode === 401) {
-                return ['success' => false, 'message' => 'Invalid webhook secret. Check your credentials.'];
+                return [
+                    'success' => false,
+                    'message' => 'Invalid webhook secret. Check your credentials.' . ($clockWarning ? ' ' . $skewText : ''),
+                    'clock_skew_minutes' => $clockWarning ? $skewMinutes : null,
+                ];
             }
 
             if ($statusCode === 400) {
@@ -144,6 +172,17 @@ class WebhookClient implements WebhookClientInterface
         }
     }
 
+    /**
+     * Seconds this server's clock is ahead of Emporiqa's (negative when
+     * behind), from the response Date header; null without one.
+     */
+    public static function clockSkew(string $dateHeader, int $now): ?int
+    {
+        $remote = $dateHeader !== '' ? strtotime($dateHeader) : false;
+
+        return $remote === false ? null : $now - $remote;
+    }
+
     public static function generateSignature(string $payload, string $secret): string
     {
         return hash_hmac('sha256', $payload, $secret);
@@ -154,15 +193,6 @@ class WebhookClient implements WebhookClientInterface
         $expected = self::generateSignature($payload, $secret);
 
         return hash_equals($expected, $signature);
-    }
-
-    public static function generateUserToken(string $userId, string $webhookSecret): string
-    {
-        $payload = json_encode(['uid' => $userId, 'ts' => time()]);
-        $encodedPayload = rtrim(strtr(base64_encode($payload), '+/', '-_'), '=');
-        $signature = hash_hmac('sha256', $encodedPayload, $webhookSecret);
-
-        return $encodedPayload . '.' . $signature;
     }
 
     /**
@@ -312,13 +342,21 @@ class WebhookClient implements WebhookClientInterface
 
         $payload = $this->ensureDictFields($payload);
         $jsonPayload = json_encode($payload, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE);
-        $signature = self::generateSignature($jsonPayload, $secret);
+        // Called once per attempt, so every retry is signed with a fresh t
+        // (Emporiqa answers a re-sent scheme-2 signature as a duplicate).
+        // Both schemes while an older platform may still receive this.
+        $scheme2 = SignatureHelper::buildHeader(
+            SignatureHelper::deriveKey($secret, SignatureHelper::LABEL_INBOUND, $this->config->getStoreId()),
+            $jsonPayload,
+        );
 
         return $this->client->request('POST', $url, [
             'body' => $jsonPayload,
             'headers' => [
                 'Content-Type' => 'application/json',
-                'X-Webhook-Signature' => $signature,
+                'X-Webhook-Signature' => self::generateSignature($jsonPayload, $secret),
+                'X-Emporiqa-Webhook-Signature' => $scheme2,
+                'X-Emporiqa-Plugin-Version' => 'shopware/' . EmporiqaIntegration::PLUGIN_VERSION,
             ],
             'connect_timeout' => 5,
             'timeout' => 30,
@@ -329,8 +367,11 @@ class WebhookClient implements WebhookClientInterface
     }
 
     /**
-     * Parse a JSON error body for a human-readable message. Checks, in
-     * order: error, detail, message, errors[0], hint, first non-empty wins.
+     * Parse a JSON error body for a human-readable message: the first
+     * non-empty of error, detail, message, errors[0], followed by the hint
+     * when there is one. The hint is what tells the merchant what to do
+     * next (a 409 "Sync session already active" says to wait for the stale
+     * session to be replaced), so it is never dropped behind the error.
      */
     private function buildFriendlyError(string $body): ?string
     {
@@ -343,6 +384,20 @@ class WebhookClient implements WebhookClientInterface
             return null;
         }
 
+        $message = self::firstMessage($decoded);
+        $hint = $decoded['hint'] ?? null;
+        if (!\is_string($hint) || $hint === '' || $hint === $message) {
+            return $message;
+        }
+
+        return $message === null ? $hint : rtrim($message, '. ') . '. ' . $hint;
+    }
+
+    /**
+     * @param array<mixed> $decoded
+     */
+    private static function firstMessage(array $decoded): ?string
+    {
         foreach (['error', 'detail', 'message'] as $key) {
             $value = $decoded[$key] ?? null;
             if (\is_string($value) && $value !== '') {
@@ -364,11 +419,6 @@ class WebhookClient implements WebhookClientInterface
                     }
                 }
             }
-        }
-
-        $hint = $decoded['hint'] ?? null;
-        if (\is_string($hint) && $hint !== '') {
-            return $hint;
         }
 
         return null;

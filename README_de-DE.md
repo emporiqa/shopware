@@ -43,7 +43,9 @@ Nach der Installation über einen der beiden Wege:
 
 **Läuft Ihr Shop über HTTP, oder tragen Sie die Zugangsdaten lieber selbst ein?** Tragen Sie in den Verbindungseinstellungen eine **Shop-ID** und ein **Webhook-Geheimnis** ein. Diese finden Sie in Ihrem Emporiqa-Dashboard unter **Settings → Integration**; das Dashboard ist englischsprachig. Beide Wege führen zum selben Ergebnis.
 
-Kopieren Sie für die Bestellverfolgung die auf der Einstellungsseite angezeigte **Bestellverfolgungs-URL** und tragen Sie sie in Ihrem Emporiqa-Dashboard unter **Integration → Order tracking** ein (die URL wird auf den meisten Installationen auch von der One-Click-Verbindung automatisch abgeleitet).
+**Bestellstatus.** Sobald Emporiqa Ihrem Shop fertige Regeln anbietet (nach dem Verbinden oder einem Verbindungstest), zeigt der Tab „Einstellungen“ die Karte **Fertige Regeln** mit der **Adresse für den Bestellstatus**. Klicken Sie auf **In Emporiqa öffnen**, um die Regel „Order status“ hinzuzufügen; findet Emporiqa die Adresse nicht selbst, kopieren Sie sie in die Regel. Die Regel beantwortet „Wo ist meine Bestellung?“ aus Ihren Shopware-Bestellungen: Ein angemeldeter Kunde nennt nur die Bestellnummer, ein Gast zusätzlich die E-Mail-Adresse der Bestellung.
+
+Die ältere Bestellverfolgung funktioniert weiter wie bisher. Wo fertige Regeln angeboten werden, steht sie unter **Erweitert** als *Alte Bestellverfolgung (veraltet)*: Sobald „Order status“ eingeschaltet ist, entfernen Sie ihre Adresse in Ihrem Emporiqa-Dashboard (**Settings > Integration > For your developer > Order tracking API URL**, das Dashboard ist englischsprachig) und schalten Sie sie dann aus.
 
 ## Konfiguration
 
@@ -57,7 +59,7 @@ Empfohlen ist der Weg über **Mit Emporiqa verbinden** (One-Click-Handshake, Sie
 |-------------|--------------|----------|
 | Shop-ID | Ihre Emporiqa-Shop-Kennung (wird von der One-Click-Verbindung automatisch eingetragen) | (leer) |
 | Webhook-Geheimnis | Signaturschlüssel für HMAC-SHA256 (wird von der One-Click-Verbindung automatisch eingetragen) | (leer) |
-| Bestellverfolgungs-URL | Schreibgeschützter Endpunkt zum Eintragen in Ihr Emporiqa-Dashboard | automatisch erzeugt |
+| Bestellverfolgungs-URL | Schreibgeschützter Endpunkt der alten Bestellverfolgung (hier angezeigt, bis fertige Regeln angeboten werden) | automatisch erzeugt |
 
 **Erweitert**
 
@@ -68,7 +70,7 @@ Empfohlen ist der Weg über **Mit Emporiqa verbinden** (One-Click-Handshake, Sie
 | Webhook-URL | Emporiqa-Webhook-Endpunkt | `https://emporiqa.com/webhooks/sync/` |
 | Stapelgröße | Produkte bzw. Seiten pro Webhook-Anfrage bei der Massensynchronisierung | 50 |
 
-Die Bestellverfolgung (mit Verifizierung der Kunden-E-Mail-Adresse) und die Warenkorb-Aktionen im Chat sind immer aktiv. Eine Konfiguration ist dafür nicht nötig.
+Die Warenkorb-Aktionen im Chat sind immer aktiv. Die Identität eines angemeldeten Kunden erreicht den Chat nur über einen nicht zwischengespeicherten Endpunkt beim Öffnen des Chats, nie über die Seite oder die Widget-URL. Die alte Bestellverfolgung steht, wo fertige Regeln angeboten werden, mit einem Schalter unter „Erweitert“ (standardmäßig eingeschaltet).
 
 ## KI-Hinweis
 
@@ -79,6 +81,8 @@ Die Standardbegrüßung sagt dem Käufer, dass er mit dem KI-Assistenten Ihres S
 Das Plugin überträgt Produkt-, Seiten- und Bestelländerungen über die Events der Shopware-Datenschicht (DAL) automatisch an Emporiqa, sobald sie eintreten. Reine Bestandsänderungen senden eine kompakte Aktualisierung, die nur die Verfügbarkeit enthält, statt das ganze Produkt neu aufzubauen, und Änderungen an Produktmedien oder Preisen stoßen die Übertragung des betroffenen Produkts eigenständig an.
 
 Manche Änderungen betreffen den gesamten Katalog (Bearbeitung von Kategorien, Herstellern oder Währungen, eine neue Sprache, geänderte Aktionen). Eine synchrone Neusynchronisierung Produkt für Produkt aus diesen Events heraus würde die Admin-Anfrage blockieren. Das Plugin schreibt deshalb eine Warnung mit Handlungshinweis in das Shopware-Log (`var/log/`) und überlässt die Aktualisierung des Katalogs einem manuellen Durchlauf.
+
+Zeitlich begrenzte Aktionen (erweiterte Preise einer Regel mit Zeitraum) erscheinen im Chat, wenn sie beginnen, und verschwinden, wenn sie enden: Eine geplante Aufgabe synchronisiert die betroffenen Produkte alle 15 Minuten neu. Ihr Shop muss dafür die geplanten Aufgaben von Shopware ausführen (`bin/console scheduled-task:run` oder den Admin-Worker). Preise aus Regeln nach Uhrzeit oder Wochentag werden nie übertragen; der Chat nennt den Preis, der außerhalb dieser Zeiten gilt.
 
 Führen Sie im Tab **Synchronisierung** eine vollständige Synchronisierung aus, wenn:
 
@@ -111,7 +115,9 @@ EmporiqaIntegration/
 │   │   ├── Admin/SyncController.php     # Admin-Endpunkte für Synchronisierung und Datenvorschau
 │   │   ├── Admin/ConnectController.php  # Endpunkte der One-Click-Verbindung (PKCE)
 │   │   ├── CartController.php           # Warenkorb-API für den Chat
-│   │   └── OrderTrackingController.php  # HMAC-signierter Endpunkt für die Bestellverfolgung
+│   │   ├── ActionController.php         # Fertige Regeln: Bestellstatus, Kundenpreise + Adressprüfung (beidseitig signiert)
+│   │   ├── UserTokenController.php      # Nicht zwischengespeichertes Kunden-Token für den Chat
+│   │   └── OrderTrackingController.php  # Alter HMAC-signierter Endpunkt der Bestellverfolgung (veraltet)
 │   ├── Service/
 │   │   ├── SyncService.php              # Steuerung der Massensynchronisierung + Kanalkontexte
 │   │   ├── ProductFormatter.php         # Aufbereitung der Produkt- und Varianten-Payloads
@@ -121,6 +127,7 @@ EmporiqaIntegration/
 │   │   ├── ConfigService.php            # Zugriff auf die Einstellungen
 │   │   └── WebhookClient.php            # HTTP-Client für HMAC-SHA256-signierte Webhooks
 │   ├── Subscriber/                      # Listener für DAL-Events in Echtzeit
+│   ├── ScheduledTask/                   # Synchronisiert Produkte neu, wenn eine Aktion beginnt oder endet
 │   ├── MessageQueue/                    # Asynchrone Handler für Webhooks und vollständige Synchronisierung
 │   ├── Event/                           # Erweiterungs-Events (Payload- und Widget-Hooks)
 │   └── Resources/
@@ -152,7 +159,8 @@ Entwickler können Symfony-Events abonnieren, um Payloads oder das Verhalten des
 | `PostProductFormatEvent` | Produkt- bzw. Varianten-Payload vor dem Senden ändern |
 | `PostPageFormatEvent` | Seiten-Payload vor dem Senden ändern |
 | `PostOrderFormatEvent` | Bestell-Payload vor dem Senden ändern |
-| `OrderTrackingResponseEvent` | Antwort der Bestellverfolgung ändern |
+| `OrderStatusResponseEvent` | Antwort der Regel „Order status“ (`data`) ändern |
+| `OrderTrackingResponseEvent` | Antwort der alten Bestellverfolgung ändern |
 | `WidgetParamsEvent` | Einbindungsparameter des Chat-Widgets ändern |
 | `PreSyncEvent` / `PostSyncEvent` | Logik vor und nach einem Lauf der Massensynchronisierung ausführen |
 

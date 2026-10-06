@@ -13,6 +13,7 @@ use Shopware\Core\System\Language\LanguageCollection;
 use Shopware\Core\System\Language\LanguageEntity;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Storefront\Event\StorefrontRenderEvent;
+use Shopware\Storefront\Framework\Routing\RequestTransformer;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
@@ -57,8 +58,7 @@ class StorefrontSubscriber implements EventSubscriberInterface
         }
 
         $request = $event->getRequest();
-        $locale = $request->getLocale();
-        $languageCode = $locale;
+        $languageCode = $request->getLocale();
 
         // Derive widget URL from webhook URL
         $webhookUrl = $this->config->getWebhookUrl($salesChannelId);
@@ -74,14 +74,18 @@ class StorefrontSubscriber implements EventSubscriberInterface
         $currency = $event->getSalesChannelContext()->getCurrency();
         $currencyIso = $currency->getIsoCode();
 
+        // A sales channel domain with a path (https://shop.example/de) serves
+        // the plugin routes under that path too.
+        $basePath = rtrim((string) parse_url((string) $request->attributes->get(RequestTransformer::STOREFRONT_URL, ''), \PHP_URL_PATH), '/');
+
         $emporiqaConfig = [
             'storeId' => $storeId,
             'language' => $languageCode,
             'channel' => $widgetChannel,
             'currency' => $currencyIso,
             'widgetBaseUrl' => $widgetBaseUrl,
-            'cartApiUrl' => '/emporiqa/api/cart',
-            'userTokenUrl' => '/emporiqa/api/user-token',
+            'cartApiUrl' => $basePath . '/emporiqa/api/cart',
+            'userTokenUrl' => $basePath . '/emporiqa/api/user-token',
         ];
 
         $widgetParamsEvent = new WidgetParamsEvent($emporiqaConfig, $event->getSalesChannelContext());

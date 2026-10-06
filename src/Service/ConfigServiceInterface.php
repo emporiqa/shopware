@@ -49,4 +49,19 @@ interface ConfigServiceInterface
     public function getOrderCompletedStates(?string $salesChannelId = null): array;
 
     public function isOrderRequireEmail(?string $salesChannelId = null): bool;
+
+    /**
+     * Keep what Emporiqa said about ready-made rules (connect exchange or the
+     * Test connection dry run): `rules_available` and `live_rules`.
+     *
+     * @param array<string, mixed> $answer
+     */
+    public function saveRulesStatus(array $answer): void;
+
+    public function isRulesAvailable(): bool;
+
+    /**
+     * @return string[] ready-made rule keys Emporiqa last reported live
+     */
+    public function getLiveRules(): array;
 }

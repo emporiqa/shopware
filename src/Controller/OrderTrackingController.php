@@ -7,6 +7,7 @@ namespace Emporiqa\ShopwarePlugin\Controller;
 use Emporiqa\ShopwarePlugin\Event\OrderTrackingResponseEvent;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\WebhookClient;
+use Psr\Log\LoggerInterface;
 use Shopware\Core\Checkout\Order\OrderCollection;
 use Shopware\Core\Checkout\Order\OrderEntity;
 use Shopware\Core\Defaults;
@@ -34,11 +35,28 @@ class OrderTrackingController extends StorefrontController
         private readonly ConfigServiceInterface $config,
         private readonly EntityRepository $orderRepository,
         private readonly EventDispatcherInterface $eventDispatcher,
+        private readonly ?LoggerInterface $logger = null,
     ) {
     }
 
+    /**
+     * The order tracking of 1.2.x, kept working unchanged for stores that
+     * use it. Replaced by Emporiqa's Order status rule (ActionController).
+     */
     #[Route(path: '/emporiqa/api/order/tracking', name: 'frontend.emporiqa.order.tracking', methods: ['POST'], defaults: ['XmlHttpRequest' => true, '_loginRequired' => false])]
     public function tracking(Request $request, SalesChannelContext $context): JsonResponse
+    {
+        try {
+            return $this->answer($request, $context);
+        } catch (\Throwable $e) {
+            // Never a stack trace or a Shopware error page to the caller.
+            $this->logger?->error('[Emporiqa] Order tracking failed: ' . ActionController::describe($e));
+
+            return new JsonResponse(['error' => 'Internal error'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private function answer(Request $request, SalesChannelContext $context): JsonResponse
     {
         if (!$this->config->isOrderTrackingEnabled($context->getSalesChannelId())) {
             return new JsonResponse(['error' => 'Order tracking is disabled'], Response::HTTP_NOT_FOUND);
@@ -68,8 +86,16 @@ class OrderTrackingController extends StorefrontController
         }
 
         $orderIdentifier = $data['order_identifier'] ?? '';
-        if ($orderIdentifier === '') {
+        if (\is_int($orderIdentifier)) {
+            $orderIdentifier = (string) $orderIdentifier;
+        }
+        if (!\is_string($orderIdentifier) || $orderIdentifier === '') {
             return new JsonResponse(['error' => 'Missing order identifier'], Response::HTTP_BAD_REQUEST);
+        }
+        // No order number is this long or contains whitespace or control
+        // characters: answered like an unknown order, without a lookup.
+        if (mb_strlen($orderIdentifier) > 64 || preg_match('/[\s\x00-\x1f\x7f]/u', $orderIdentifier)) {
+            return $this->orderNotFoundResponse();
         }
 
         $order = $this->findOrder($orderIdentifier, $context->getContext());
@@ -83,9 +109,9 @@ class OrderTrackingController extends StorefrontController
         // not being found at all, this deliberately makes the two
         // indistinguishable so an anonymous caller cannot use verification
         // failures to probe which order numbers exist (PS parity).
-        $verificationFields = $data['verification_fields'] ?? [];
+        $verificationFields = \is_array($data['verification_fields'] ?? null) ? $data['verification_fields'] : [];
         $requireEmail = $this->config->isOrderRequireEmail($context->getSalesChannelId());
-        $providedEmail = $verificationFields['email'] ?? '';
+        $providedEmail = \is_string($verificationFields['email'] ?? null) ? $verificationFields['email'] : '';
 
         if ($requireEmail || $providedEmail !== '') {
             if ($providedEmail === '' || !$this->emailMatchesOrder($order, $providedEmail)) {

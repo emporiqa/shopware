@@ -43,7 +43,9 @@ After installing by either method above:
 
 **On HTTP, or prefer to paste credentials yourself?** In the Connection settings, paste a **Store ID** and **Webhook Secret** from your Emporiqa dashboard under **Settings → Integration**. Both flows reach the same place.
 
-For order tracking, copy the **Order Tracking URL** shown on the settings page and paste it into your Emporiqa dashboard under **Integration → Order tracking** (the URL is also auto-derived by one-click connect on most setups).
+**Order status.** Once Emporiqa offers ready-made rules to your store (after connecting or a Test connection), the Settings tab shows a **Ready-made rules** card with the plugin's **Order status address**. Click **Open in Emporiqa** to add the Order status rule; if Emporiqa does not find the address by itself, copy it into the rule. The rule answers "Where is my order?" from your Shopware orders: a signed-in shopper only gives the order number, a guest also gives the order email.
+
+The older order tracking keeps working as before. Where ready-made rules are offered it sits under **Advanced** as *Old order tracking (deprecated)*: once Order status is on, remove its address in your Emporiqa dashboard (**Settings > Integration > For your developer > Order tracking API URL**), then switch it off.
 
 ## Configuration
 
@@ -57,7 +59,7 @@ The recommended path is **Connect to Emporiqa** (one-click handshake, no credent
 |---------|-------------|---------|
 | Store ID | Your Emporiqa store identifier (filled automatically by one-click connect) | (none) |
 | Webhook Secret | HMAC-SHA256 signing secret (filled automatically by one-click connect) | (none) |
-| Order Tracking URL | Read-only endpoint to paste into your Emporiqa dashboard | auto-generated |
+| Order Tracking URL | Read-only endpoint of the old order tracking (shown here until ready-made rules are offered) | auto-generated |
 
 **Advanced**
 
@@ -67,8 +69,9 @@ The recommended path is **Connect to Emporiqa** (one-click handshake, no credent
 | Sync Pages | Enable real-time CMS page sync | On |
 | Webhook URL | Emporiqa webhook endpoint | `https://emporiqa.com/webhooks/sync/` |
 | Batch Size | Products/pages per webhook request during bulk sync | 50 |
+| Old order tracking (deprecated) | Shown where ready-made rules are offered; replaced by the Order status rule | On |
 
-Order tracking (with customer email verification) and in-chat cart operations are always enabled. No configuration needed.
+In-chat cart operations are always enabled. The signed-in shopper's identity reaches the chat only from an uncached endpoint when the chat opens, never through the page or the widget URL.
 
 ## AI disclosure
 
@@ -79,6 +82,8 @@ The chat's default greeting tells the shopper it is the store's AI assistant, in
 The plugin pushes product, page, and order changes to Emporiqa automatically as they happen, through Shopware's data layer (DAL) events. Pure stock or out-of-stock changes emit a compact availability-only update instead of rebuilding the whole product, and product media or price changes re-emit the affected product on their own.
 
 Some changes affect the whole catalog (category, brand, or currency edits, a new language, promotion changes). Running a synchronous per-product re-sync from those events would block the admin request, so the plugin logs an actionable warning to Shopware's log (`var/log/`) instead and leaves the catalog refresh to a manual run.
+
+Dated sales (advanced prices on a rule with a date range) reach the chat when they start and leave it when they end: a scheduled task re-syncs the affected products every 15 minutes, so your shop must run Shopware's scheduled tasks (`bin/console scheduled-task:run`, or the admin worker). Prices on rules by time of day or weekday are never sent; the chat quotes the price that applies outside them.
 
 Re-run a full sync from the **Sync** tab when:
 
@@ -110,8 +115,10 @@ EmporiqaIntegration/
 │   ├── Controller/
 │   │   ├── Admin/SyncController.php     # Admin sync + data-preview endpoints
 │   │   ├── Admin/ConnectController.php  # One-click connect (PKCE) endpoints
+│   │   ├── ActionController.php         # Ready-made rules: order status, customer prices + verify (signed both ways)
 │   │   ├── CartController.php           # In-chat cart API
-│   │   └── OrderTrackingController.php  # HMAC-signed order tracking endpoint
+│   │   ├── UserTokenController.php      # Uncached signed-in customer token for the chat
+│   │   └── OrderTrackingController.php  # Old HMAC-signed order tracking endpoint (deprecated)
 │   ├── Service/
 │   │   ├── SyncService.php              # Bulk sync orchestration + channel contexts
 │   │   ├── ProductFormatter.php         # Product/variant payload formatting
@@ -121,6 +128,7 @@ EmporiqaIntegration/
 │   │   ├── ConfigService.php            # Settings access
 │   │   └── WebhookClient.php            # HMAC-SHA256 signed webhook HTTP client
 │   ├── Subscriber/                      # Real-time DAL event listeners
+│   ├── ScheduledTask/                   # Re-syncs products when a dated sale starts or ends
 │   ├── MessageQueue/                    # Async webhook and full-sync handlers
 │   ├── Event/                           # Extension events (payload / widget hooks)
 │   └── Resources/
@@ -152,7 +160,8 @@ Developers can subscribe to Symfony events to customize payloads or widget behav
 | `PostProductFormatEvent` | Modify the product/variant payload before sending |
 | `PostPageFormatEvent` | Modify the page payload before sending |
 | `PostOrderFormatEvent` | Modify the order payload before sending |
-| `OrderTrackingResponseEvent` | Modify the order tracking response |
+| `OrderStatusResponseEvent` | Modify the Order status rule's answer (`data`) |
+| `OrderTrackingResponseEvent` | Modify the old order tracking response |
 | `WidgetParamsEvent` | Modify the chat widget embed parameters |
 | `PreSyncEvent` / `PostSyncEvent` | Run logic before and after a bulk sync session |
 
