@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1 (2026-10-06)
+
+### Added
+- **Order status answers with the whole order.** Besides the status, date, tracking and expected delivery, the answer now carries the order number, the customer's name, the items (name, product number, variant, quantity, unit and line price), the totals (subtotal, shipping, tax, discount, total) in the order's currency as the customer was charged, the payment method and payment status, the shipping method and its delivery time, and the shipping and billing address. The chat shows them only after the shopper proved the order is theirs (order number and email, or signed in), as before; the email, customer id and internal ids are never sent back. `OrderStatusResponseEvent` runs after all of it is filled, so an extension can change any of it and add its own fields under `extra` (see the README).
+- **Headless sales channels are named instead of skipped in silence.** Test connection (on the Emporiqa page and `bin/console emporiqa:test-connection`) and the Sync tab list the active headless (API) sales channels that show products, and say why they are not synced: Shopware creates no product page addresses (SEO URLs) for headless channels, so the chat could not link to products there. They also point to the embed code for adding the chat to a frontend Shopware does not render. Shopware's empty default "Headless" channel is not listed. Nothing changes in what is synced.
+
 ## 1.3.0 (2026-10-05)
 
 ### In short

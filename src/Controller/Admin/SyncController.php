@@ -8,6 +8,7 @@ use Emporiqa\ShopwarePlugin\MessageQueue\Message\FullSyncMessage;
 use Emporiqa\ShopwarePlugin\Service\ChannelResolverInterface;
 use Emporiqa\ShopwarePlugin\Service\CmsPageFormatterInterface;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
+use Emporiqa\ShopwarePlugin\Service\HeadlessChannelNotice;
 use Emporiqa\ShopwarePlugin\Service\ProductFormatterInterface;
 use Emporiqa\ShopwarePlugin\Service\SyncServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\WebhookClientInterface;
@@ -72,6 +73,7 @@ class SyncController extends AbstractController
         private readonly EntityRepository $stateMachineStateRepository,
         private readonly SystemConfigService $systemConfigService,
         private readonly MessageBusInterface $messageBus,
+        private readonly ?HeadlessChannelNotice $headlessChannelNotice = null,
     ) {
     }
 
@@ -281,6 +283,7 @@ class SyncController extends AbstractController
         try {
             $events = $this->buildTestEvents($context);
             $result = $this->webhookClient->testConnection($events);
+            $result['headless_channels'] = $this->headlessChannels($context);
 
             return new JsonResponse($result);
         } catch (\Throwable $e) {
@@ -288,6 +291,20 @@ class SyncController extends AbstractController
                 'success' => false,
                 'message' => 'Connection test failed: ' . $e->getMessage(),
             ], JsonResponse::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * Headless sales channels that show products and are therefore not synced.
+     *
+     * @return list<string>
+     */
+    private function headlessChannels(Context $context): array
+    {
+        try {
+            return $this->headlessChannelNotice?->channelsWithProducts($context) ?? [];
+        } catch (\Throwable) {
+            return [];
         }
     }
 
@@ -370,6 +387,7 @@ class SyncController extends AbstractController
                 'syncPages' => $this->configService->isSyncPagesEnabled(),
                 'cartEnabled' => $this->configService->isCartEnabled(),
                 'orderTrackingEnabled' => $this->configService->isOrderTrackingEnabled(),
+                'headlessChannels' => $this->headlessChannels($context),
             ]);
         } catch (\Throwable $e) {
             return new JsonResponse([

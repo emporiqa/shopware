@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Emporiqa\ShopwarePlugin\Service;
 
 use Emporiqa\ShopwarePlugin\Event\OrderStatusResponseEvent;
+use Shopware\Core\Checkout\Order\Aggregate\OrderAddress\OrderAddressEntity;
 use Shopware\Core\Checkout\Order\Aggregate\OrderDelivery\OrderDeliveryEntity;
+use Shopware\Core\Checkout\Order\Aggregate\OrderLineItem\OrderLineItemEntity;
 use Shopware\Core\Checkout\Order\Aggregate\OrderTransaction\OrderTransactionEntity;
 use Shopware\Core\Checkout\Order\OrderCollection;
 use Shopware\Core\Checkout\Order\OrderEntity;
@@ -29,6 +31,10 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 class OrderStatusService
 {
     private const MAX_TRACKING = 10;
+
+    private const MAX_ITEMS = 50;
+
+    private const MAX_TEXT = 255;
 
     /**
      * @param EntityRepository<OrderCollection> $orderRepository
@@ -149,9 +155,17 @@ class OrderStatusService
 
         $full = new Criteria([$owned->getId()]);
         $full->addAssociation('stateMachineState');
+        $full->addAssociation('orderCustomer');
+        $full->addAssociation('currency');
+        $full->addAssociation('lineItems');
+        $full->addAssociation('addresses.country');
+        $full->addAssociation('addresses.countryState');
         $full->addAssociation('transactions.stateMachineState');
+        $full->addAssociation('transactions.paymentMethod');
         $full->addAssociation('deliveries.stateMachineState');
-        $full->addAssociation('deliveries.shippingMethod');
+        $full->addAssociation('deliveries.shippingMethod.deliveryTime');
+        $full->addAssociation('deliveries.shippingOrderAddress.country');
+        $full->addAssociation('deliveries.shippingOrderAddress.countryState');
         $order = $this->orderRepository->search($full, $fetchContext)->getEntities()->first();
 
         return $order instanceof OrderEntity ? $order : null;
@@ -180,7 +194,9 @@ class OrderStatusService
 
     /**
      * `data` per the catalog schema: status_code, status_label, placed_at,
-     * tracking, estimated_delivery.
+     * tracking, estimated_delivery, and the order's details (number, name,
+     * items, totals, payment, shipping, addresses). Keys the order has no
+     * value for are left out.
      *
      * @return array<string, mixed>
      */
@@ -219,7 +235,167 @@ class OrderStatusService
             $data['estimated_delivery'] = $latest->format('Y-m-d');
         }
 
-        return $data;
+        return $data + $this->orderDetails($order, $transaction, $delivery);
+    }
+
+    /**
+     * The order as the shopper saw it at checkout: amounts in the order's
+     * currency and price mode (gross or net, as the storefront showed it).
+     *
+     * @return array<string, mixed>
+     */
+    private function orderDetails(OrderEntity $order, ?OrderTransactionEntity $transaction, ?OrderDeliveryEntity $delivery): array
+    {
+        $decimals = $order->getItemRounding()?->getDecimals() ?? 2;
+        $details = [];
+
+        $details['order_number'] = self::text($order->getOrderNumber());
+        $customer = $order->getOrderCustomer();
+        if ($customer !== null) {
+            $details['customer_name'] = self::text(trim($customer->getFirstName() . ' ' . $customer->getLastName()));
+        }
+        $details['currency'] = self::text($order->getCurrency()?->getIsoCode());
+
+        $items = [];
+        $discount = 0.0;
+        $subtotal = 0.0;
+        foreach ($this->topLevelLineItems($order) as $lineItem) {
+            $total = $lineItem->getTotalPrice();
+            // Promotions and credits are negative positions: they are the discount, not items.
+            if ($total < 0) {
+                $discount += -$total;
+                continue;
+            }
+            $subtotal += $total;
+            if (\count($items) < self::MAX_ITEMS) {
+                $items[] = $this->item($lineItem, $decimals);
+            }
+        }
+        if ($items !== []) {
+            $details['items'] = $items;
+        }
+
+        $totals = [];
+        if ($order->getLineItems() !== null) {
+            $totals['subtotal'] = round($subtotal, $decimals);
+        }
+        $totals['shipping'] = round($order->getShippingTotal(), $decimals);
+        $totals['tax'] = round($order->getAmountTotal() - $order->getAmountNet(), $decimals);
+        if ($discount > 0) {
+            $totals['discount'] = round($discount, $decimals);
+        }
+        $totals['total'] = round($order->getAmountTotal(), $decimals);
+        $details['totals'] = $totals;
+
+        $paymentMethod = $transaction?->getPaymentMethod();
+        if ($paymentMethod !== null) {
+            $details['payment_method'] = self::text($paymentMethod->getTranslation('name') ?? $paymentMethod->getName());
+        }
+        $paymentState = $transaction?->getStateMachineState();
+        if ($paymentState !== null) {
+            $details['payment_status'] = self::text($this->stateName($paymentState));
+        }
+
+        $shippingMethod = $delivery?->getShippingMethod();
+        if ($shippingMethod !== null) {
+            $details['shipping_method'] = self::text($shippingMethod->getTranslation('name') ?? $shippingMethod->getName());
+            $deliveryTime = $shippingMethod->getDeliveryTime();
+            if ($deliveryTime !== null) {
+                $details['delivery_time'] = self::text($deliveryTime->getTranslation('name') ?? $deliveryTime->getName());
+            }
+        }
+
+        $shippingAddress = $this->address($delivery?->getShippingOrderAddress());
+        if ($shippingAddress !== []) {
+            $details['shipping_address'] = $shippingAddress;
+        }
+        $billingAddress = $this->address($order->getAddresses()?->get($order->getBillingAddressId()));
+        if ($billingAddress !== []) {
+            $details['billing_address'] = $billingAddress;
+        }
+
+        return array_filter($details, static fn (mixed $value): bool => $value !== '');
+    }
+
+    /**
+     * Positions as the order lists them; children of a container are part
+     * of their parent's price and are not listed again.
+     *
+     * @return list<OrderLineItemEntity>
+     */
+    private function topLevelLineItems(OrderEntity $order): array
+    {
+        $lineItems = [];
+        foreach ($order->getLineItems() ?? [] as $lineItem) {
+            if ($lineItem->getParentId() === null) {
+                $lineItems[] = $lineItem;
+            }
+        }
+        usort($lineItems, static fn (OrderLineItemEntity $a, OrderLineItemEntity $b): int => $a->getPosition() <=> $b->getPosition());
+
+        return $lineItems;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function item(OrderLineItemEntity $lineItem, int $decimals): array
+    {
+        $payload = $lineItem->getPayload() ?? [];
+        $item = [
+            'name' => self::text($lineItem->getLabel()),
+            'sku' => self::text(\is_scalar($payload['productNumber'] ?? null) ? (string) $payload['productNumber'] : ''),
+            'quantity' => $lineItem->getQuantity(),
+            'unit_price' => round($lineItem->getUnitPrice(), $decimals),
+            'total_price' => round($lineItem->getTotalPrice(), $decimals),
+        ];
+
+        // A variant's options, e.g. [{group: Colour, option: Blue}, {group: Size, option: XL}] -> "Blue / XL".
+        $options = [];
+        foreach (\is_array($payload['options'] ?? null) ? $payload['options'] : [] as $option) {
+            if (\is_array($option) && \is_scalar($option['option'] ?? null) && trim((string) $option['option']) !== '') {
+                $options[] = trim((string) $option['option']);
+            }
+        }
+        if ($options !== []) {
+            $item['variant'] = self::text(implode(' / ', $options));
+        }
+
+        return array_filter($item, static fn (mixed $value): bool => $value !== '');
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function address(?OrderAddressEntity $address): array
+    {
+        if ($address === null) {
+            return [];
+        }
+
+        $country = $address->getCountry();
+        $region = $address->getCountryState();
+        $fields = [
+            'name' => trim($address->getFirstName() . ' ' . $address->getLastName()),
+            'company' => $address->getCompany(),
+            'address1' => $address->getStreet(),
+            'address2' => trim(implode(' ', array_filter([$address->getAdditionalAddressLine1(), $address->getAdditionalAddressLine2()]))),
+            'postcode' => $address->getZipcode(),
+            'city' => $address->getCity(),
+            'region' => $region !== null ? ($region->getTranslation('name') ?? $region->getName()) : null,
+            'country' => $country !== null ? ($country->getTranslation('name') ?? $country->getName() ?? $country->getIso()) : null,
+            'phone' => $address->getPhoneNumber(),
+        ];
+
+        return array_filter(array_map(self::text(...), $fields), static fn (string $value): bool => $value !== '');
+    }
+
+    /**
+     * Shop wording as a trimmed, capped string; '' for anything that is not text.
+     */
+    private static function text(mixed $value): string
+    {
+        return \is_string($value) ? mb_substr(trim($value), 0, self::MAX_TEXT) : '';
     }
 
     private function latestTransaction(OrderEntity $order): ?OrderTransactionEntity

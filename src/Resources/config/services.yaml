@@ -51,6 +51,10 @@ services:
 
     Emporiqa\ShopwarePlugin\Service\ChannelResolverInterface: '@Emporiqa\ShopwarePlugin\Service\ChannelResolver'
 
+    Emporiqa\ShopwarePlugin\Service\HeadlessChannelNotice:
+        arguments:
+            $salesChannelRepository: '@sales_channel.repository'
+
     Emporiqa\ShopwarePlugin\Service\SyncService:
         arguments:
             $productRepository: '@product.repository'

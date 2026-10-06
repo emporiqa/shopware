@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1 (2026-10-06)
+
+### Hinzugefügt
+- **„Order status“ antwortet mit der ganzen Bestellung.** Neben Status, Datum, Sendungsverfolgung und voraussichtlicher Lieferung enthält die Antwort jetzt Bestellnummer, Namen des Kunden, die Artikel (Name, Produktnummer, Variante, Menge, Einzel- und Positionspreis), die Summen (Zwischensumme, Versand, Steuer, Rabatt, Gesamtbetrag) in der Währung der Bestellung so, wie sie dem Kunden berechnet wurden, Zahlungsart und Zahlungsstatus, Versandart und deren Lieferzeit sowie Liefer- und Rechnungsadresse. Der Chat zeigt sie wie bisher erst, nachdem der Kunde nachgewiesen hat, dass die Bestellung ihm gehört (Bestellnummer und E-Mail-Adresse oder angemeldet); E-Mail-Adresse, Kunden-ID und interne IDs werden nie zurückgesendet. `OrderStatusResponseEvent` läuft, nachdem alles gefüllt ist, sodass eine Erweiterung jeden Wert ändern und unter `extra` eigene Felder hinzufügen kann (siehe README).
+- **Headless-Verkaufskanäle werden genannt, statt stillschweigend übersprungen zu werden.** Der Verbindungstest (auf der Emporiqa-Seite und mit `bin/console emporiqa:test-connection`) und der Tab „Synchronisierung“ nennen die aktiven Headless-Verkaufskanäle (API), in denen Produkte sichtbar sind, und erklären, warum sie nicht synchronisiert werden: Shopware erzeugt für Headless-Kanäle keine Produktadressen (SEO-URLs), daher könnte der Chat dort nicht auf Produkte verlinken. Sie verweisen außerdem auf den Einbettungscode, mit dem Sie den Chat in ein Frontend einbinden, das Shopware nicht ausliefert. Der leere Standardkanal „Headless“ von Shopware wird nicht genannt. An dem, was synchronisiert wird, ändert sich nichts.
+
 ## 1.3.0 (2026-10-05)
 
 ### Kurz gesagt

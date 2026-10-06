@@ -740,7 +740,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
 
         /** @var SalesChannelEntity $salesChannel */
         foreach ($salesChannels as $salesChannel) {
-            // Skip Headless API channels, they don't have public storefront URLs
+            // Headless API channels have no product addresses to link to; see ChannelResolver::autoDetect()
             if ($salesChannel->getTypeId() === Defaults::SALES_CHANNEL_TYPE_API) {
                 continue;
             }

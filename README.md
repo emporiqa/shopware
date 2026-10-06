@@ -43,7 +43,7 @@ After installing by either method above:
 
 **On HTTP, or prefer to paste credentials yourself?** In the Connection settings, paste a **Store ID** and **Webhook Secret** from your Emporiqa dashboard under **Settings → Integration**. Both flows reach the same place.
 
-**Order status.** Once Emporiqa offers ready-made rules to your store (after connecting or a Test connection), the Settings tab shows a **Ready-made rules** card with the plugin's **Order status address**. Click **Open in Emporiqa** to add the Order status rule; if Emporiqa does not find the address by itself, copy it into the rule. The rule answers "Where is my order?" from your Shopware orders: a signed-in shopper only gives the order number, a guest also gives the order email.
+**Order status.** Once Emporiqa offers ready-made rules to your store (after connecting or a Test connection), the Settings tab shows a **Ready-made rules** card with the plugin's **Order status address**. Click **Open in Emporiqa** next to Order status, then in Emporiqa click **Try it** to test the rule and **Go live** to switch it on. You do not need to copy anything: Emporiqa fills in your shop's address by itself when you connect in one click. If it ever asks for the address, use the one on the card (it has a Copy button). The rule answers "Where is my order?" from your Shopware orders: a signed-in shopper only gives the order number, a guest also gives the order email. Once the order is proven theirs, the chat can tell them its status, date, tracking, delivery time, items and total, and when they ask, the payment, shipping and billing details.
 
 The older order tracking keeps working as before. Where ready-made rules are offered it sits under **Advanced** as *Old order tracking (deprecated)*: once Order status is on, remove its address in your Emporiqa dashboard (**Settings > Integration > For your developer > Order tracking API URL**), then switch it off.
 
@@ -70,6 +70,8 @@ The recommended path is **Connect to Emporiqa** (one-click handshake, no credent
 | Webhook URL | Emporiqa webhook endpoint | `https://emporiqa.com/webhooks/sync/` |
 | Batch Size | Products/pages per webhook request during bulk sync | 50 |
 | Old order tracking (deprecated) | Shown where ready-made rules are offered; replaced by the Order status rule | On |
+
+**Headless sales channels** (type Headless/API) are not synced: Shopware creates no product page addresses (SEO URLs) for them, so the chat would have no product links to give. Storefront sales channels are synced as usual. Test connection and the Sync tab name any active headless channel that shows products. The chat widget comes with the Storefront theme; on a frontend Shopware does not render, add it with the [embed code](https://emporiqa.com/docs/widget-embedding/).
 
 In-chat cart operations are always enabled. The signed-in shopper's identity reaches the chat only from an uncached endpoint when the chat opens, never through the page or the widget URL.
 
@@ -164,6 +166,25 @@ Developers can subscribe to Symfony events to customize payloads or widget behav
 | `OrderTrackingResponseEvent` | Modify the old order tracking response |
 | `WidgetParamsEvent` | Modify the chat widget embed parameters |
 | `PreSyncEvent` / `PostSyncEvent` | Run logic before and after a bulk sync session |
+
+**Custom fields in the Order status answer.** `OrderStatusResponseEvent` runs after the plugin has filled `data` (status, dates, tracking, order number, customer name, currency, items, totals, payment and shipping method, payment status, delivery time, shipping and billing address), so a subscriber can change any of it. Put your own fields under `extra`: Emporiqa drops any other key it does not know. `extra` takes string keys with text, number or yes/no values, or nested lists and objects, at most 3 levels deep, 30 keys in all, texts up to 500 characters. The chat uses them when the shopper asks. Add only what the shopper may see: the answer is given after they proved the order is theirs.
+
+```php
+public static function getSubscribedEvents(): array
+{
+    return [OrderStatusResponseEvent::class => 'onOrderStatus'];
+}
+
+public function onOrderStatus(OrderStatusResponseEvent $event): void
+{
+    $data = $event->getData();
+    $data['extra'] = [
+        'gift_wrap' => true,
+        'pickup_point' => 'Store Berlin-Mitte',
+    ];
+    $event->setData($data);
+}
+```
 
 Every service is defined against an interface (`ProductFormatterInterface`, `CmsPageFormatterInterface`, `SyncServiceInterface`, `WebhookClientInterface`, `ChannelResolverInterface`, `ConfigServiceInterface`, `ConnectServiceInterface`), so you can decorate any of them with a standard Symfony service decorator.
 

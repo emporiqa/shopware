@@ -54,7 +54,8 @@
                 "copyUrl": "URL kopieren",
                 "orderTrackingUrlHelp": "Kopieren Sie diese URL in Ihr Emporiqa-Dashboard unter „Settings“ → „Integration“ → „Order tracking“. Das Dashboard ist englischsprachig.",
                 "testSuccess": "Verbindung erfolgreich.",
-                "clockSkew": "Die Uhr Ihres Servers geht um {minutes} Minuten falsch; Emporiqa lehnt Signaturen ab, die mehr als 5 Minuten abweichen. Bitten Sie Ihren Hoster, NTP zu aktivieren."
+                "clockSkew": "Die Uhr Ihres Servers geht um {minutes} Minuten falsch; Emporiqa lehnt Signaturen ab, die mehr als 5 Minuten abweichen. Bitten Sie Ihren Hoster, NTP zu aktivieren.",
+                "headlessChannels": "Nicht synchronisiert (Headless-Verkaufskanal): {names}. Shopware erzeugt für Headless-Kanäle keine Produktadressen (SEO-URLs), daher könnte der Chat dort nicht auf Produkte verlinken; synchronisiert werden nur Storefront-Verkaufskanäle. Das Chat-Widget kommt mit dem Storefront-Theme; auf einem Frontend, das Shopware nicht ausliefert, binden Sie es mit dem Einbettungscode ein: https://emporiqa.com/docs/widget-embedding/"
             },
             "syncSettings": {
                 "syncProducts": "Produkte synchronisieren",

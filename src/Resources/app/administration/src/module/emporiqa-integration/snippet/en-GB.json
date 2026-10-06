@@ -54,7 +54,8 @@
                 "copyUrl": "Copy URL",
                 "orderTrackingUrlHelp": "Copy this URL into your Emporiqa dashboard under Settings, Integration, Order tracking.",
                 "testSuccess": "Connection successful.",
-                "clockSkew": "Your server clock is off by {minutes} minutes; Emporiqa refuses signatures more than 5 minutes off. Ask your host to enable NTP."
+                "clockSkew": "Your server clock is off by {minutes} minutes; Emporiqa refuses signatures more than 5 minutes off. Ask your host to enable NTP.",
+                "headlessChannels": "Not synced (headless sales channel): {names}. Shopware creates no product page addresses (SEO URLs) for headless channels, so the chat could not link to products there; only Storefront sales channels are synced. The chat widget comes with the Storefront theme; on a frontend Shopware does not render, add it with the embed code: https://emporiqa.com/docs/widget-embedding/"
             },
             "syncSettings": {
                 "syncProducts": "Sync Products",

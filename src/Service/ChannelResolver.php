@@ -76,6 +76,12 @@ class ChannelResolver implements ChannelResolverInterface, ResetInterface
         $used = [];
         /** @var SalesChannelEntity $salesChannel */
         foreach ($salesChannels as $salesChannel) {
+            // Headless (API) channels are never synced: Shopware generates no
+            // seo_url rows for them (SeoUrlUpdater filters them out; verified on
+            // 6.6.10 and 6.7.2 with a domain and product visibilities added), and
+            // the fallbacks /detail/<id>, /navigation/<id> are routes of the
+            // Shopware storefront, which a custom frontend does not serve. No
+            // link beats a dead one; HeadlessChannelNotice tells the merchant.
             if ($salesChannel->getTypeId() === Defaults::SALES_CHANNEL_TYPE_API) {
                 continue;
             }

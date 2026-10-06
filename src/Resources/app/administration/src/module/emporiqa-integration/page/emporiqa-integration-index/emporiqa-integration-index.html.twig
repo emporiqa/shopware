@@ -488,6 +488,14 @@
                                 </span>
                             </div>
                         </div>
+
+                        <sw-alert
+                            v-if="overview.headlessChannels && overview.headlessChannels.length > 0"
+                            :variant="alertVariants.warning"
+                            class="emporiqa-integration-index__result-alert"
+                        >
+                            {{ $t('emporiqa-integration.settings.connection.headlessChannels', { names: overview.headlessChannels.join(', ') }) }}
+                        </sw-alert>
                     </template>
 
                     {# Sync buttons #}

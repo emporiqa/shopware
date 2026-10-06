@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Emporiqa\ShopwarePlugin\Command;
 
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
+use Emporiqa\ShopwarePlugin\Service\HeadlessChannelNotice;
 use Emporiqa\ShopwarePlugin\Service\ProductFormatterInterface;
 use Emporiqa\ShopwarePlugin\Service\SyncServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\SystemContext;
@@ -32,6 +33,7 @@ class TestConnectionCommand extends Command
         private readonly SyncServiceInterface $syncService,
         private readonly ProductFormatterInterface $productFormatter,
         private readonly EntityRepository $productRepository,
+        private readonly ?HeadlessChannelNotice $headlessChannelNotice = null,
     ) {
         parent::__construct();
     }
@@ -53,6 +55,11 @@ class TestConnectionCommand extends Command
 
         if (isset($result['dry_run'])) {
             $this->displayDryRunResults($io, $result['dry_run']);
+        }
+
+        $headless = $this->headlessChannelNotice?->channelsWithProducts(SystemContext::create()) ?? [];
+        if ($headless !== []) {
+            $io->warning(HeadlessChannelNotice::message($headless));
         }
 
         return $result['success'] ? Command::SUCCESS : Command::FAILURE;

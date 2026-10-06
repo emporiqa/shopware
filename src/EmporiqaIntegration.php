@@ -12,7 +12,7 @@ use Shopware\Core\Framework\Plugin\Context\UpdateContext;
 
 class EmporiqaIntegration extends Plugin
 {
-    public const PLUGIN_VERSION = '1.3.0';
+    public const PLUGIN_VERSION = '1.3.1';
 
     /**
      * Before 1.2.4, tier prices from customer-group rules were synced as public

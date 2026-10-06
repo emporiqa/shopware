@@ -43,7 +43,7 @@ Nach der Installation über einen der beiden Wege:
 
 **Läuft Ihr Shop über HTTP, oder tragen Sie die Zugangsdaten lieber selbst ein?** Tragen Sie in den Verbindungseinstellungen eine **Shop-ID** und ein **Webhook-Geheimnis** ein. Diese finden Sie in Ihrem Emporiqa-Dashboard unter **Settings → Integration**; das Dashboard ist englischsprachig. Beide Wege führen zum selben Ergebnis.
 
-**Bestellstatus.** Sobald Emporiqa Ihrem Shop fertige Regeln anbietet (nach dem Verbinden oder einem Verbindungstest), zeigt der Tab „Einstellungen“ die Karte **Fertige Regeln** mit der **Adresse für den Bestellstatus**. Klicken Sie auf **In Emporiqa öffnen**, um die Regel „Order status“ hinzuzufügen; findet Emporiqa die Adresse nicht selbst, kopieren Sie sie in die Regel. Die Regel beantwortet „Wo ist meine Bestellung?“ aus Ihren Shopware-Bestellungen: Ein angemeldeter Kunde nennt nur die Bestellnummer, ein Gast zusätzlich die E-Mail-Adresse der Bestellung.
+**Bestellstatus.** Sobald Emporiqa Ihrem Shop fertige Regeln anbietet (nach dem Verbinden oder einem Verbindungstest), zeigt der Tab „Einstellungen“ die Karte **Fertige Regeln** mit der **Adresse für den Bestellstatus**. Klicken Sie neben „Order status“ auf **In Emporiqa öffnen** und dann in Emporiqa auf **Try it**, um die Regel zu testen, und auf **Go live**, um sie einzuschalten (das Dashboard ist englischsprachig). Sie müssen nichts kopieren: Emporiqa trägt die Adresse Ihres Shops beim Verbinden mit einem Klick selbst ein. Falls Emporiqa doch einmal danach fragt, verwenden Sie die Adresse auf der Karte (mit Kopieren-Schaltfläche). Die Regel beantwortet „Wo ist meine Bestellung?“ aus Ihren Shopware-Bestellungen: Ein angemeldeter Kunde nennt nur die Bestellnummer, ein Gast zusätzlich die E-Mail-Adresse der Bestellung. Ist nachgewiesen, dass die Bestellung ihm gehört, nennt der Chat Status, Datum, Sendungsverfolgung, Lieferzeit, Artikel und Gesamtbetrag und auf Nachfrage Zahlungs-, Liefer- und Rechnungsdaten.
 
 Die ältere Bestellverfolgung funktioniert weiter wie bisher. Wo fertige Regeln angeboten werden, steht sie unter **Erweitert** als *Alte Bestellverfolgung (veraltet)*: Sobald „Order status“ eingeschaltet ist, entfernen Sie ihre Adresse in Ihrem Emporiqa-Dashboard (**Settings > Integration > For your developer > Order tracking API URL**, das Dashboard ist englischsprachig) und schalten Sie sie dann aus.
 
@@ -69,6 +69,8 @@ Empfohlen ist der Weg über **Mit Emporiqa verbinden** (One-Click-Handshake, Sie
 | Seiten synchronisieren | Echtzeit-Synchronisierung von CMS-Seiten aktivieren | An |
 | Webhook-URL | Emporiqa-Webhook-Endpunkt | `https://emporiqa.com/webhooks/sync/` |
 | Stapelgröße | Produkte bzw. Seiten pro Webhook-Anfrage bei der Massensynchronisierung | 50 |
+
+**Headless-Verkaufskanäle** (Typ Headless/API) werden nicht synchronisiert: Shopware erzeugt für sie keine Produktadressen (SEO-URLs), daher hätte der Chat keine Produktlinks. Storefront-Verkaufskanäle werden wie gewohnt synchronisiert. Der Verbindungstest und der Tab „Synchronisierung“ nennen jeden aktiven Headless-Kanal, in dem Produkte sichtbar sind. Das Chat-Widget kommt mit dem Storefront-Theme; auf einem Frontend, das Shopware nicht ausliefert, binden Sie es mit dem [Einbettungscode](https://emporiqa.com/docs/widget-embedding/) ein.
 
 Die Warenkorb-Aktionen im Chat sind immer aktiv. Die Identität eines angemeldeten Kunden erreicht den Chat nur über einen nicht zwischengespeicherten Endpunkt beim Öffnen des Chats, nie über die Seite oder die Widget-URL. Die alte Bestellverfolgung steht, wo fertige Regeln angeboten werden, mit einem Schalter unter „Erweitert“ (standardmäßig eingeschaltet).
 
@@ -163,6 +165,25 @@ Entwickler können Symfony-Events abonnieren, um Payloads oder das Verhalten des
 | `OrderTrackingResponseEvent` | Antwort der alten Bestellverfolgung ändern |
 | `WidgetParamsEvent` | Einbindungsparameter des Chat-Widgets ändern |
 | `PreSyncEvent` / `PostSyncEvent` | Logik vor und nach einem Lauf der Massensynchronisierung ausführen |
+
+**Eigene Felder in der Antwort von „Order status“.** `OrderStatusResponseEvent` läuft, nachdem das Plugin `data` gefüllt hat (Status, Daten, Sendungsverfolgung, Bestellnummer, Kundenname, Währung, Artikel, Summen, Zahlungs- und Versandart, Zahlungsstatus, Lieferzeit, Liefer- und Rechnungsadresse), sodass ein Subscriber jeden Wert ändern kann. Eigene Felder gehören unter `extra`: Jeden anderen Schlüssel, den Emporiqa nicht kennt, verwirft Emporiqa. `extra` nimmt Schlüssel als Text mit Text-, Zahlen- oder Ja/Nein-Werten oder verschachtelten Listen und Objekten an, höchstens 3 Ebenen tief, insgesamt 30 Schlüssel, Texte bis 500 Zeichen. Der Chat verwendet sie, wenn der Kunde danach fragt. Fügen Sie nur hinzu, was der Kunde sehen darf: Die Antwort kommt erst, nachdem er nachgewiesen hat, dass die Bestellung ihm gehört.
+
+```php
+public static function getSubscribedEvents(): array
+{
+    return [OrderStatusResponseEvent::class => 'onOrderStatus'];
+}
+
+public function onOrderStatus(OrderStatusResponseEvent $event): void
+{
+    $data = $event->getData();
+    $data['extra'] = [
+        'gift_wrap' => true,
+        'pickup_point' => 'Filiale Berlin-Mitte',
+    ];
+    $event->setData($data);
+}
+```
 
 Jeder Service ist gegen ein Interface definiert (`ProductFormatterInterface`, `CmsPageFormatterInterface`, `SyncServiceInterface`, `WebhookClientInterface`, `ChannelResolverInterface`, `ConfigServiceInterface`, `ConnectServiceInterface`), sodass sich jeder davon mit einem gewöhnlichen Symfony-Service-Decorator dekorieren lässt.
 

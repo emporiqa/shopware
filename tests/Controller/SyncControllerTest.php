@@ -8,6 +8,7 @@ use Emporiqa\ShopwarePlugin\Controller\Admin\SyncController;
 use Emporiqa\ShopwarePlugin\Service\ChannelResolverInterface;
 use Emporiqa\ShopwarePlugin\Service\CmsPageFormatterInterface;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
+use Emporiqa\ShopwarePlugin\Service\HeadlessChannelNotice;
 use Emporiqa\ShopwarePlugin\Service\ProductFormatterInterface;
 use Emporiqa\ShopwarePlugin\Service\SyncServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\WebhookClientInterface;
@@ -500,6 +501,40 @@ class SyncControllerTest extends TestCase
         $this->configStore['EmporiqaIntegration.syncSession.index'] = json_encode($index);
 
         return $sessionId;
+    }
+
+    /**
+     * A headless channel that shows products is named in the Test connection
+     * answer, so the admin can say why nothing of it is synced.
+     */
+    public function testTestConnectionNamesHeadlessChannelsThatShowProducts(): void
+    {
+        $this->webhookClient->method('testConnection')->willReturn(['success' => true, 'message' => 'Connection successful!']);
+        $notice = $this->createMock(HeadlessChannelNotice::class);
+        $notice->method('channelsWithProducts')->willReturn(['Emporiqa test frontend']);
+
+        $controller = new SyncController(
+            $this->syncService,
+            $this->webhookClient,
+            $this->configService,
+            $this->createMock(ChannelResolverInterface::class),
+            $this->createMock(ProductFormatterInterface::class),
+            $this->createMock(CmsPageFormatterInterface::class),
+            $this->createMock(EntityRepository::class),
+            $this->createMock(EntityRepository::class),
+            $this->createMock(EntityRepository::class),
+            $this->createMock(EntityRepository::class),
+            $this->createMock(EntityRepository::class),
+            $this->createMock(EntityRepository::class),
+            $this->systemConfigService,
+            $this->createMock(MessageBusInterface::class),
+            $notice,
+        );
+
+        $data = json_decode((string) $controller->testConnection(Context::createDefaultContext())->getContent(), true);
+
+        $this->assertTrue($data['success']);
+        $this->assertSame(['Emporiqa test frontend'], $data['headless_channels']);
     }
 
     private function rebuildControllerWithConfigService(ConfigServiceInterface&MockObject $configService): SyncController
