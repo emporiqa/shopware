@@ -45,6 +45,8 @@ After installing by either method above:
 
 **Order status.** Once Emporiqa offers ready-made rules to your store (after connecting or a Test connection), the Settings tab shows a **Ready-made rules** card with the plugin's **Order status address**. Click **Open in Emporiqa** next to Order status, then in Emporiqa click **Try it** to test the rule and **Go live** to switch it on. You do not need to copy anything: Emporiqa fills in your shop's address by itself when you connect in one click. If it ever asks for the address, use the one on the card (it has a Copy button). The rule answers "Where is my order?" from your Shopware orders: a signed-in shopper only gives the order number, a guest also gives the order email. Once the order is proven theirs, the chat can tell them its status, date, tracking, delivery time, items and total, and when they ask, the payment, shipping and billing details.
 
+**Customer info.** For a signed-in shopper the plugin also answers Emporiqa's signed customer info call: the name and email of their customer account and their 10 newest orders (number, date, status and total), so the chat can answer "where is my order?" without asking for the number. Only the account's own orders in the sales channels synced to your Emporiqa store are included; a guest order placed with the same email is not. Nothing to set up: Emporiqa uses it when its chat supports it.
+
 The older order tracking keeps working as before. Where ready-made rules are offered it sits under **Advanced** as *Old order tracking (deprecated)*: once Order status is on, remove its address in your Emporiqa dashboard (**Settings > Integration > For your developer > Order tracking API URL**), then switch it off.
 
 ## Configuration
@@ -71,6 +73,8 @@ The recommended path is **Connect to Emporiqa** (one-click handshake, no credent
 | Batch Size | Products/pages per webhook request during bulk sync | 50 |
 | Old order tracking (deprecated) | Shown where ready-made rules are offered; replaced by the Order status rule | On |
 
+The **Sync** tab shows how many products and pages a sync sends: products visible in a synced sales channel, and pages reachable there (a category page only when it has text of its own, the home page only when it has any text).
+
 **Headless sales channels** (type Headless/API) are not synced: Shopware creates no product page addresses (SEO URLs) for them, so the chat would have no product links to give. Storefront sales channels are synced as usual. Test connection and the Sync tab name any active headless channel that shows products. The chat widget comes with the Storefront theme; on a frontend Shopware does not render, add it with the [embed code](https://emporiqa.com/docs/widget-embedding/).
 
 In-chat cart operations are always enabled. The signed-in shopper's identity reaches the chat only from an uncached endpoint when the chat opens, never through the page or the widget URL.
@@ -85,6 +89,8 @@ The plugin pushes product, page, and order changes to Emporiqa automatically as 
 
 Some changes affect the whole catalog (category, brand, or currency edits, a new language, promotion changes). Running a synchronous per-product re-sync from those events would block the admin request, so the plugin logs an actionable warning to Shopware's log (`var/log/`) instead and leaves the catalog refresh to a manual run.
 
+If Emporiqa cannot be reached or answers with a server error, a change is sent again after 1, 5 and 15 minutes and then hourly, six times in all (about 2 hours 20 minutes), so a short outage loses nothing. When a newer save of the same product or page reaches Emporiqa first, the older version is not sent over it. A change Emporiqa refuses (for example after the webhook secret changed) is not retried; it is logged and kept in Shopware's `failed` queue, from where `bin/console messenger:failed:retry` sends it again once the cause is fixed.
+
 Dated sales (advanced prices on a rule with a date range) reach the chat when they start and leave it when they end: a scheduled task re-syncs the affected products every 15 minutes, so your shop must run Shopware's scheduled tasks (`bin/console scheduled-task:run`, or the admin worker). Prices on rules by time of day or weekday are never sent; the chat quotes the price that applies outside them.
 
 Re-run a full sync from the **Sync** tab when:
@@ -92,7 +98,7 @@ Re-run a full sync from the **Sync** tab when:
 - You see one of the "catalog-wide change" warnings in the Shopware log
 - You add or reassign a sales channel (existing products won't carry the new channel's data until something else touches them)
 - You import products in bulk or write catalog data directly to the database (bulk paths can bypass standard events)
-- Emporiqa was unreachable for an extended period (network outage, planned maintenance, expired credentials)
+- Emporiqa was unreachable for more than about two hours, or refused changes (network outage, planned maintenance, expired credentials)
 
 As a safety net, run a full sync once a week to catch any drift that may have built up from background failures.
 
@@ -117,7 +123,7 @@ EmporiqaIntegration/
 │   ├── Controller/
 │   │   ├── Admin/SyncController.php     # Admin sync + data-preview endpoints
 │   │   ├── Admin/ConnectController.php  # One-click connect (PKCE) endpoints
-│   │   ├── ActionController.php         # Ready-made rules: order status, customer prices + verify (signed both ways)
+│   │   ├── ActionController.php         # Ready-made rules: order status, customer prices, customer info + verify (signed both ways)
 │   │   ├── CartController.php           # In-chat cart API
 │   │   ├── UserTokenController.php      # Uncached signed-in customer token for the chat
 │   │   └── OrderTrackingController.php  # Old HMAC-signed order tracking endpoint (deprecated)
@@ -163,6 +169,7 @@ Developers can subscribe to Symfony events to customize payloads or widget behav
 | `PostPageFormatEvent` | Modify the page payload before sending |
 | `PostOrderFormatEvent` | Modify the order payload before sending |
 | `OrderStatusResponseEvent` | Modify the Order status rule's answer (`data`) |
+| `CustomerInfoResponseEvent` | Modify the customer info answer (`data`): remove fields or add `extra` |
 | `OrderTrackingResponseEvent` | Modify the old order tracking response |
 | `WidgetParamsEvent` | Modify the chat widget embed parameters |
 | `PreSyncEvent` / `PostSyncEvent` | Run logic before and after a bulk sync session |
@@ -186,7 +193,24 @@ public function onOrderStatus(OrderStatusResponseEvent $event): void
 }
 ```
 
-Every service is defined against an interface (`ProductFormatterInterface`, `CmsPageFormatterInterface`, `SyncServiceInterface`, `WebhookClientInterface`, `ChannelResolverInterface`, `ConfigServiceInterface`, `ConnectServiceInterface`), so you can decorate any of them with a standard Symfony service decorator.
+**Changing the customer info answer.** `CustomerInfoResponseEvent` runs after the plugin has filled `data`: `customer` (`name`, `first_name`, `last_name`, `email`) and `orders` (up to 10, newest first, each `order_number`, `placed_at`, `status_code`, `status_label`, `total`, `currency`). `getCustomer()` and `getOrders()` give the loaded entities. Remove what you do not want to share, or add your own fields under `extra` (the same limits as for Order status). The answer is about the signed-in shopper only, so add nothing about anyone else.
+
+```php
+public static function getSubscribedEvents(): array
+{
+    return [CustomerInfoResponseEvent::class => 'onCustomerInfo'];
+}
+
+public function onCustomerInfo(CustomerInfoResponseEvent $event): void
+{
+    $data = $event->getData();
+    unset($data['customer']['email']);
+    $data['extra'] = ['loyalty_tier' => 'Gold'];
+    $event->setData($data);
+}
+```
+
+Every service is defined against an interface (`ProductFormatterInterface`, `CmsPageFormatterInterface`, `SyncServiceInterface`, `WebhookClientInterface`, `ChannelResolverInterface`, `ConfigServiceInterface`, `ConnectServiceInterface`), so you can decorate any of them with a standard Symfony service decorator. A decorator of `WebhookClientInterface` that should keep the retry behaviour also implements `TransientFailureAwareInterface` (forwarding `isLastFailureTransient()`); without it, every failed send is retried as if Emporiqa were unreachable.
 
 ## Pricing
 

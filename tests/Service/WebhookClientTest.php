@@ -10,6 +10,7 @@ use Emporiqa\ShopwarePlugin\Service\SignatureHelper;
 use Emporiqa\ShopwarePlugin\Service\WebhookClient;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Middleware;
@@ -510,17 +511,74 @@ class WebhookClientTest extends TestCase
 
     public function testGetLastErrorSetOnTransportException(): void
     {
-        $client = $this->createClientWithMock([
-            new ConnectException('Connection refused', new Request('POST', 'https://emporiqa.com/')),
-        ]);
+        $refused = static fn () => new ConnectException('Connection refused', new Request('POST', 'https://emporiqa.com/'));
+        $client = $this->createClientWithMock([$refused(), $refused(), $refused()]);
 
         $this->config->method('getFullWebhookUrl')->willReturn('https://emporiqa.com/webhooks/sync/store-1/');
         $this->config->method('getWebhookSecret')->willReturn('test-secret');
 
-        $webhookClient = new WebhookClient($this->config, $this->logger, $client);
+        $webhookClient = new WebhookClient($this->config, $this->logger, $client, 0);
         $webhookClient->sendBatchEvents([['type' => 'product.created', 'data' => []]]);
 
         $this->assertStringContainsString('Connection refused', $webhookClient->getLastError());
+    }
+
+    /**
+     * A refused connect is retried in place (it fails fast) and then counts
+     * as transient, so the queue re-sends it later. Before 1.3.2 the
+     * \RuntimeException branch caught Guzzle's exceptions first: no retry.
+     */
+    public function testARefusedConnectIsRetriedAndTransient(): void
+    {
+        $history = [];
+        $refused = static fn () => new ConnectException('Connection refused', new Request('POST', 'https://emporiqa.com/'));
+        $client = $this->createClientWithMock([$refused(), $refused(), $refused()], $history);
+        $webhookClient = $this->webhookClientWithFailingRequest($client, 0);
+
+        $this->assertFalse($webhookClient->sendBatchEvents([['type' => 'product.created', 'data' => []]]));
+        $this->assertCount(3, $history);
+        $this->assertTrue($webhookClient->isLastFailureTransient());
+    }
+
+    public function testAReadTimeoutIsTransientButNotRetriedInPlace(): void
+    {
+        $history = [];
+        $request = new Request('POST', 'https://emporiqa.com/');
+        $client = $this->createClientWithMock([new RequestException('cURL error 28: timed out', $request)], $history);
+        $webhookClient = $this->webhookClientWithFailingRequest($client, 0);
+
+        $this->assertFalse($webhookClient->sendBatchEvents([['type' => 'product.created', 'data' => []]]));
+        $this->assertCount(1, $history);
+        $this->assertTrue($webhookClient->isLastFailureTransient());
+    }
+
+    public function testAServerErrorIsTransient(): void
+    {
+        $client = $this->createClientWithMock([new Response(502), new Response(503), new Response(500)]);
+        $webhookClient = $this->webhookClientWithFailingRequest($client, 0);
+
+        $this->assertFalse($webhookClient->sendBatchEvents([['type' => 'product.created', 'data' => []]]));
+        $this->assertTrue($webhookClient->isLastFailureTransient());
+    }
+
+    public function testARefusalIsNotTransientAndASuccessClearsIt(): void
+    {
+        $client = $this->createClientWithMock([
+            new Response(500), new Response(500), new Response(500),
+            new Response(401, [], '{"error":"Invalid signature"}'),
+            new Response(500), new Response(500), new Response(500),
+            new Response(202),
+        ]);
+        $webhookClient = $this->webhookClientWithFailingRequest($client, 0);
+        $events = [['type' => 'product.created', 'data' => []]];
+
+        $webhookClient->sendBatchEvents($events);
+        $this->assertTrue($webhookClient->isLastFailureTransient());
+        $this->assertFalse($webhookClient->sendBatchEvents($events));
+        $this->assertFalse($webhookClient->isLastFailureTransient());
+        $webhookClient->sendBatchEvents($events);
+        $this->assertTrue($webhookClient->sendBatchEvents($events));
+        $this->assertFalse($webhookClient->isLastFailureTransient());
     }
 
     public function testGetLastErrorClearedAtStartOfNextRequest(): void
@@ -541,12 +599,12 @@ class WebhookClientTest extends TestCase
         $this->assertNull($webhookClient->getLastError());
     }
 
-    private function webhookClientWithFailingRequest(Client $client): WebhookClient
+    private function webhookClientWithFailingRequest(Client $client, int $retryDelayMicroseconds = 1_000_000): WebhookClient
     {
         $this->config->method('getFullWebhookUrl')->willReturn('https://emporiqa.com/webhooks/sync/store-1/');
         $this->config->method('getWebhookSecret')->willReturn('test-secret');
 
-        return new WebhookClient($this->config, $this->logger, $client);
+        return new WebhookClient($this->config, $this->logger, $client, $retryDelayMicroseconds);
     }
 
     public function testTestConnectionFallsBackToDefaultPayload(): void

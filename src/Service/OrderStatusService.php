@@ -203,11 +203,11 @@ class OrderStatusService
     private function buildData(OrderEntity $order): array
     {
         $orderState = $order->getStateMachineState();
-        $transaction = $this->latestTransaction($order);
+        $transaction = self::latestTransaction($order);
         $deliveries = $order->getDeliveries();
         $delivery = $deliveries?->first();
 
-        [$code, $labelState] = $this->statusCode(
+        [$code, $labelState] = self::statusCode(
             $orderState,
             $transaction?->getStateMachineState(),
             $delivery?->getStateMachineState(),
@@ -398,7 +398,7 @@ class OrderStatusService
         return \is_string($value) ? mb_substr(trim($value), 0, self::MAX_TEXT) : '';
     }
 
-    private function latestTransaction(OrderEntity $order): ?OrderTransactionEntity
+    public static function latestTransaction(OrderEntity $order): ?OrderTransactionEntity
     {
         $latest = null;
         foreach ($order->getTransactions() ?? [] as $transaction) {
@@ -412,11 +412,12 @@ class OrderStatusService
 
     /**
      * Shopware keeps three state machines per order; the most telling one
-     * decides, and its own label goes with the code.
+     * decides, and its own label goes with the code. Shared with customer_info,
+     * so both answer an order the same.
      *
      * @return array{0: string, 1: ?StateMachineStateEntity}
      */
-    private function statusCode(
+    public static function statusCode(
         ?StateMachineStateEntity $order,
         ?StateMachineStateEntity $transaction,
         ?StateMachineStateEntity $delivery,

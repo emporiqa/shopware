@@ -64,6 +64,10 @@ services:
 
     Emporiqa\ShopwarePlugin\Service\SyncServiceInterface: '@Emporiqa\ShopwarePlugin\Service\SyncService'
 
+    Emporiqa\ShopwarePlugin\Service\DeliveryLedger:
+        arguments:
+            $connection: '@Doctrine\DBAL\Connection'
+
     Emporiqa\ShopwarePlugin\MessageQueue\Handler\WebhookMessageHandler: ~
 
     Emporiqa\ShopwarePlugin\MessageQueue\Handler\FullSyncMessageHandler: ~
@@ -134,6 +138,12 @@ services:
             $customerRepository: '@customer.repository'
             $connection: '@Doctrine\DBAL\Connection'
 
+    Emporiqa\ShopwarePlugin\Service\CustomerInfoService:
+        arguments:
+            $customerRepository: '@customer.repository'
+            $orderRepository: '@order.repository'
+            $connection: '@Doctrine\DBAL\Connection'
+
     Emporiqa\ShopwarePlugin\Controller\ActionController:
         public: true
 
@@ -147,7 +157,6 @@ services:
         arguments:
             $productRepository: '@product.repository'
             $landingPageRepository: '@landing_page.repository'
-            $categoryRepository: '@category.repository'
             $salesChannelRepository: '@sales_channel.repository'
             $propertyGroupRepository: '@property_group.repository'
             $stateMachineStateRepository: '@state_machine_state.repository'

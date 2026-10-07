@@ -30,7 +30,10 @@ class PluginLifecycleTest extends TestCase
         $this->assertCount(1, $purge);
         $this->assertStringStartsWith('DELETE FROM `system_config`', $purge[0][0]);
         $this->assertSame(['prefix' => 'EmporiqaIntegration.%'], $purge[0][1]);
-        $this->assertNotEmpty(array_filter($statements, static fn (array $s): bool => str_contains($s[0], 'DROP TABLE')));
+        $drops = implode(' ', array_column(array_filter($statements, static fn (array $s): bool => str_contains($s[0], 'DROP TABLE')), 0));
+        foreach (['emporiqa_action_request', 'emporiqa_action_rate', 'emporiqa_webhook_delivery'] as $table) {
+            $this->assertStringContainsString('`' . $table . '`', $drops);
+        }
     }
 
     public function testUninstallKeepingDataRunsNoStatement(): void

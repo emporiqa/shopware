@@ -12,7 +12,7 @@ use Shopware\Core\Framework\Plugin\Context\UpdateContext;
 
 class EmporiqaIntegration extends Plugin
 {
-    public const PLUGIN_VERSION = '1.3.1';
+    public const PLUGIN_VERSION = '1.3.2';
 
     /**
      * Before 1.2.4, tier prices from customer-group rules were synced as public
@@ -24,19 +24,28 @@ class EmporiqaIntegration extends Plugin
      */
     private const FIRST_VERSION_WITH_CORRECT_PRICES = '1.3.0';
 
+    /** Before 1.3.2, a home page with no text was synced as an empty page. */
+    private const FIRST_VERSION_WITHOUT_EMPTY_HOME_PAGE = '1.3.2';
+
     public function postUpdate(UpdateContext $updateContext): void
     {
         parent::postUpdate($updateContext);
 
-        if (version_compare($updateContext->getCurrentPluginVersion(), self::FIRST_VERSION_WITH_CORRECT_PRICES, '>=')) {
-            return;
+        $from = $updateContext->getCurrentPluginVersion();
+        $flags = [];
+        if (version_compare($from, self::FIRST_VERSION_WITH_CORRECT_PRICES, '<')) {
+            $flags[] = UpgradeResyncSubscriber::PENDING_RESYNC_KEY;
+        }
+        if (version_compare($from, self::FIRST_VERSION_WITHOUT_EMPTY_HOME_PAGE, '<')) {
+            $flags[] = UpgradeResyncSubscriber::PENDING_HOME_PAGE_CHECK_KEY;
         }
 
-        try {
-            $this->container->get('Shopware\Core\System\SystemConfig\SystemConfigService')
-                ->set(UpgradeResyncSubscriber::PENDING_RESYNC_KEY, true);
-        } catch (\Throwable $e) {
-            // Never fail the update; the changelog also asks for a manual product sync.
+        foreach ($flags as $flag) {
+            try {
+                $this->container->get('Shopware\Core\System\SystemConfig\SystemConfigService')->set($flag, true);
+            } catch (\Throwable $e) {
+                // Never fail the update; a manual sync from the Emporiqa page does the same.
+            }
         }
     }
 
@@ -77,15 +86,16 @@ class EmporiqaIntegration extends Plugin
     }
 
     /**
-     * The order status endpoint's replay and rate-limit tables
-     * (Migration1759622400ActionTables).
+     * The action endpoints' replay and rate-limit tables
+     * (Migration1759622400ActionTables) and the webhook delivery ledger
+     * (Migration1791331200DeliveryLedger).
      */
     private function dropActionTables(): void
     {
         try {
             /** @var Connection $connection */
             $connection = $this->container->get(Connection::class);
-            $connection->executeStatement('DROP TABLE IF EXISTS `emporiqa_action_request`, `emporiqa_action_rate`');
+            $connection->executeStatement('DROP TABLE IF EXISTS `emporiqa_action_request`, `emporiqa_action_rate`, `emporiqa_webhook_delivery`');
         } catch (\Throwable $e) {
             // Best-effort: never fail the uninstall over cleanup.
         }

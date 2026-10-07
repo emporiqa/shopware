@@ -150,4 +150,40 @@ class ActionGuardTest extends TestCase
 
         $this->assertSame('store', (new ActionGuard($connection))->customerPriceLimitHit('st_1', 'customer-a')['scope']);
     }
+
+    public function testCustomerInfoIsLimitedPerCustomerThenPerStore(): void
+    {
+        $guard = new ActionGuard($this->connection);
+        for ($i = 0; $i < ActionGuard::INFO_RATE_PER_CUSTOMER; ++$i) {
+            $this->assertNull($guard->customerInfoLimitHit('st_1', 'customer-a', 1_000_000));
+        }
+        $this->assertSame('value', $guard->customerInfoLimitHit('st_1', 'CUSTOMER-A', 1_000_000)['scope']);
+
+        for ($i = 0; $i < ActionGuard::INFO_RATE_PER_STORE; ++$i) {
+            $guard->customerInfoLimitHit('st_1', 'customer-' . $i, 1_000_000);
+        }
+        $this->assertSame('store', $guard->customerInfoLimitHit('st_1', 'new-customer', 1_000_000)['scope']);
+    }
+
+    /**
+     * Its own buckets: a burst of customer_prices calls for one shopper
+     * does not use up their customer_info allowance, nor the reverse.
+     */
+    public function testCustomerInfoAndCustomerPricesCountApart(): void
+    {
+        $guard = new ActionGuard($this->connection);
+        for ($i = 0; $i <= ActionGuard::PRICE_RATE_PER_CUSTOMER; ++$i) {
+            $guard->customerPriceLimitHit('st_1', 'customer-a', 1_000_000);
+        }
+
+        $this->assertNull($guard->customerInfoLimitHit('st_1', 'customer-a', 1_000_000));
+    }
+
+    public function testCustomerInfoLimitsFailClosed(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('executeStatement')->willThrowException(new \RuntimeException('table missing'));
+
+        $this->assertSame('store', (new ActionGuard($connection))->customerInfoLimitHit('st_1', 'customer-a')['scope']);
+    }
 }

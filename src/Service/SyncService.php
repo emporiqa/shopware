@@ -9,6 +9,7 @@ use Emporiqa\ShopwarePlugin\Event\PreSyncEvent;
 use Emporiqa\ShopwarePlugin\Exception\RateLimitException;
 use Shopware\Core\Content\Category\CategoryCollection;
 use Shopware\Core\Content\Category\CategoryEntity;
+use Shopware\Core\Content\Product\Aggregate\ProductVisibility\ProductVisibilityDefinition;
 use Shopware\Core\Content\LandingPage\LandingPageCollection;
 use Shopware\Core\Content\LandingPage\LandingPageEntity;
 use Shopware\Core\Content\Product\ProductCollection;
@@ -16,7 +17,10 @@ use Shopware\Core\Content\Product\ProductEntity;
 use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Metric\CountAggregation;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\AggregationResult\Metric\CountResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsAnyFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\MultiFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\NotFilter;
@@ -33,6 +37,9 @@ class SyncService implements SyncServiceInterface, ResetInterface
 {
     /** Cap on events per HTTP request sent to the webhook API. */
     private const EVENTS_PER_REQUEST = 50;
+
+    /** Items read per query while counting. */
+    private const COUNT_BATCH_SIZE = 200;
 
     /** @var array<string, array<int, array<string, string>>>|null */
     private ?array $cachedChannelContexts = null;
@@ -55,6 +62,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
         private readonly EventDispatcherInterface $eventDispatcher,
         private readonly ChannelResolverInterface $channelResolver,
         private readonly LoggerInterface $logger,
+        private readonly ?DeliveryLedger $ledger = null,
     ) {
     }
 
@@ -99,6 +107,8 @@ class SyncService implements SyncServiceInterface, ResetInterface
         while (true) {
             $criteria = self::keyset($this->buildProductCriteria(), $afterId, $batchSize);
 
+            // Read before loading, so the ledger never dates this data later than it is.
+            $builtAt = microtime(true);
             $products = $this->productRepository->search($criteria, $context)->getEntities();
 
             if ($products->count() === 0) {
@@ -112,7 +122,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
             $offset += $products->count();
 
             if (!$dryRun && !empty($events)) {
-                $rateLimited = $this->sendEventsInChunks($events, $offset, $sessionId, 'product', 'product sync', $errors);
+                $rateLimited = $this->sendEventsInChunks($events, $offset, $sessionId, 'product', 'product sync', $errors, $builtAt);
                 if ($rateLimited) {
                     break;
                 }
@@ -196,6 +206,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
         while (true) {
             $criteria = self::keyset($this->buildLandingPageCriteria(), $afterId, $batchSize);
 
+            $builtAt = microtime(true);
             $landingPages = $this->landingPageRepository->search($criteria, $context)->getEntities();
 
             if ($landingPages->count() === 0) {
@@ -209,7 +220,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
             $offset += $landingPages->count();
 
             if (!$dryRun && !empty($events)) {
-                $rateLimited = $this->sendEventsInChunks($events, $offset, $sessionId, 'page', 'page sync', $errors);
+                $rateLimited = $this->sendEventsInChunks($events, $offset, $sessionId, 'page', 'page sync', $errors, $builtAt);
                 if ($rateLimited) {
                     break;
                 }
@@ -228,6 +239,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
         while (true) {
             $criteria = self::keyset($this->buildShopPageCriteria(), $afterId, $batchSize);
 
+            $builtAt = microtime(true);
             $shopPages = $this->categoryRepository->search($criteria, $context)->getEntities();
 
             if ($shopPages->count() === 0) {
@@ -241,7 +253,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
             $offset += $shopPages->count();
 
             if (!$dryRun && !empty($events)) {
-                $rateLimited = $this->sendEventsInChunks($events, $offset, $sessionId, 'shop page', 'shop page sync', $errors);
+                $rateLimited = $this->sendEventsInChunks($events, $offset, $sessionId, 'shop page', 'shop page sync', $errors, $builtAt);
                 if ($rateLimited) {
                     break;
                 }
@@ -314,6 +326,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
         while (true) {
             $criteria = $this->buildProductCriteria();
             $criteria->setIds($productIds);
+            $builtAt = microtime(true);
             $products = $this->productRepository->search(self::keyset($criteria, $afterId, $this->config->getBatchSize()), SystemContext::create())->getEntities();
             if ($products->count() === 0) {
                 break;
@@ -326,7 +339,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
                     $events[] = ['type' => 'product.updated', 'data' => $item];
                 }
             }
-            if ($events !== [] && $this->sendEventsInChunks($events, $sent, '', 'product', 'product re-sync', $errors)) {
+            if ($events !== [] && $this->sendEventsInChunks($events, $sent, '', 'product', 'product re-sync', $errors, $builtAt)) {
                 break;
             }
             $sent += $products->count();
@@ -347,6 +360,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
      *
      * @param array<int, array{type: string, data: array<string, mixed>}> $events
      * @param list<string> $errors
+     * @param float $builtAt when the batch was read, for the delivery ledger
      */
     private function sendEventsInChunks(
         array $events,
@@ -355,10 +369,14 @@ class SyncService implements SyncServiceInterface, ResetInterface
         string $batchLabel,
         string $rateLimitContext,
         array &$errors,
+        float $builtAt,
     ): bool {
         foreach (array_chunk($events, self::EVENTS_PER_REQUEST) as $chunk) {
             try {
-                if (!$this->webhookClient->sendBatchEvents($chunk)) {
+                if ($this->webhookClient->sendBatchEvents($chunk)) {
+                    // A queued re-send of an older version must not overwrite this.
+                    $this->ledger?->recordDelivered($chunk, $builtAt, true);
+                } else {
                     // A keyset cursor (an id, or '' for the first page) means nothing to a merchant.
                     $error = \is_int($offset)
                         ? "Failed to send {$batchLabel} batch at offset {$offset}."
@@ -383,22 +401,48 @@ class SyncService implements SyncServiceInterface, ResetInterface
         return false;
     }
 
+    /**
+     * What a sync of $entity sends, counted the way the sync decides it:
+     * parents visible to the storefront search of a synced sales channel, and
+     * pages reachable in one, a category page only with text of its own.
+     * Page text is read from the stored layouts here (rendering every layout
+     * would make the Sync tab slow); the sync renders them through
+     * Shopware, which only differs for custom CMS elements filled at render time.
+     */
     public function countItems(string $entity): int
     {
         $context = SystemContext::create();
+        $channelContexts = $this->buildChannelContexts();
+        if ($channelContexts === []) {
+            return 0;
+        }
 
         if ($entity === 'products') {
+            $salesChannelIds = [];
+            foreach ($channelContexts as $contexts) {
+                foreach ($contexts as $ctx) {
+                    $salesChannelIds[$ctx['salesChannelId']] = true;
+                }
+            }
+
             $criteria = new Criteria();
             $criteria->addFilter(new EqualsFilter('active', true));
             $criteria->addFilter(new EqualsFilter('parentId', null));
-            $criteria->setLimit(1);
-            $criteria->setTotalCountMode(Criteria::TOTAL_COUNT_MODE_EXACT);
+            // One AND filter, so both conditions hold for the same visibility row.
+            $criteria->addFilter(new MultiFilter(MultiFilter::CONNECTION_AND, [
+                new EqualsAnyFilter('visibilities.salesChannelId', array_keys($salesChannelIds)),
+                new RangeFilter('visibilities.visibility', [RangeFilter::GTE => ProductVisibilityDefinition::VISIBILITY_SEARCH]),
+            ]));
+            // A search total counts joined visibility rows (a product in two
+            // channels twice); the count aggregation counts distinct products.
+            $criteria->addAggregation(new CountAggregation('products', 'id'));
+            $count = $this->productRepository->aggregate($criteria, $context)->get('products');
 
-            return $this->productRepository->search($criteria, $context)->getTotal();
+            return $count instanceof CountResult ? $count->getCount() : 0;
         }
 
         if ($entity === 'pages') {
-            return $this->countLandingPages($context) + $this->countShopPages($context);
+            return $this->countLandingPages($channelContexts, $context) + $this->countShopPages($channelContexts, $context);
         }
 
         return 0;
@@ -437,33 +481,50 @@ class SyncService implements SyncServiceInterface, ResetInterface
         return $criteria;
     }
 
-    private function countLandingPages(Context $context): int
+    /**
+     * @param array<string, array<int, array<string, string>>> $channelContexts
+     */
+    private function countLandingPages(array $channelContexts, Context $context): int
     {
-        $criteria = new Criteria();
-        $criteria->addFilter(new EqualsFilter('active', true));
-        $criteria->setLimit(1);
-        $criteria->setTotalCountMode(Criteria::TOTAL_COUNT_MODE_EXACT);
+        $formatter = new CmsPageFormatter();
+        $count = 0;
+        $afterId = '';
+        do {
+            $criteria = new Criteria();
+            $criteria->addFilter(new EqualsFilter('active', true));
+            $criteria->addSorting(new FieldSorting('id', FieldSorting::ASCENDING));
+            $criteria->addAssociation('salesChannels');
+            $pages = $this->landingPageRepository->search(self::keyset($criteria, $afterId, self::COUNT_BATCH_SIZE), $context)->getEntities();
+            foreach ($pages as $page) {
+                if ($formatter->formatLandingPage($page, $channelContexts) !== null) {
+                    ++$count;
+                }
+            }
+            $afterId = (string) $pages->last()?->getId();
+        } while ($pages->count() === self::COUNT_BATCH_SIZE);
 
-        return $this->landingPageRepository->search($criteria, $context)->getTotal();
+        return $count;
     }
 
-    private function countShopPages(Context $context): int
+    /**
+     * @param array<string, array<int, array<string, string>>> $channelContexts
+     */
+    private function countShopPages(array $channelContexts, Context $context): int
     {
-        // A non-root category needs an assigned CMS layout to have any content to
-        // sync - Shopware's system-default-layout fallback is not replicated. Tree
-        // roots are exempt: formatShopPage() always syncs the navigation root (the
-        // home page) even without one, footer/service roots resolve to null there.
-        $criteria = new Criteria();
-        $criteria->addFilter(new EqualsFilter('active', true));
-        $criteria->addFilter(new EqualsFilter('type', 'page'));
-        $criteria->addFilter(new MultiFilter(MultiFilter::CONNECTION_OR, [
-            new NotFilter(MultiFilter::CONNECTION_AND, [new EqualsFilter('cmsPageId', null)]),
-            new EqualsFilter('parentId', null),
-        ]));
-        $criteria->setLimit(1);
-        $criteria->setTotalCountMode(Criteria::TOTAL_COUNT_MODE_EXACT);
+        $formatter = new CmsPageFormatter();
+        $count = 0;
+        $afterId = '';
+        do {
+            $categories = $this->categoryRepository->search(self::keyset($this->buildShopPageCriteria(), $afterId, self::COUNT_BATCH_SIZE), $context)->getEntities();
+            foreach ($categories as $category) {
+                if ($formatter->formatShopPage($category, $channelContexts) !== null) {
+                    ++$count;
+                }
+            }
+            $afterId = (string) $categories->last()?->getId();
+        } while ($categories->count() === self::COUNT_BATCH_SIZE);
 
-        return $this->categoryRepository->search($criteria, $context)->getTotal();
+        return $count;
     }
 
     /**
@@ -480,11 +541,12 @@ class SyncService implements SyncServiceInterface, ResetInterface
         }
 
         $criteria = self::keyset($this->buildProductCriteria(), $cursor, $batchSize);
+        $builtAt = microtime(true);
         $products = $this->productRepository->search($criteria, SystemContext::create())->getEntities();
 
         [$events, $processed] = $this->formatProductEvents($products, $channelContexts, $sessionId);
 
-        $result = $this->sendBatchResult($events, $processed, $cursor, $sessionId, 'product', 'product sync');
+        $result = $this->sendBatchResult($events, $processed, $cursor, $sessionId, 'product', 'product sync', $builtAt);
         $result['nextCursor'] = $products->count() < $batchSize ? null : (string) $products->last()?->getId();
 
         return $result;
@@ -506,6 +568,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
 
         [$phase, $afterId] = str_contains($cursor, ':') ? explode(':', $cursor, 2) : ['landing', ''];
         $context = SystemContext::create();
+        $builtAt = microtime(true);
 
         if ($phase === 'landing') {
             $criteria = self::keyset($this->buildLandingPageCriteria(), $afterId, $batchSize);
@@ -519,7 +582,7 @@ class SyncService implements SyncServiceInterface, ResetInterface
             $next = $pages->count() < $batchSize ? null : 'shop:' . $pages->last()?->getId();
         }
 
-        $result = $this->sendBatchResult($events, $processed, $cursor, $sessionId, 'page', 'page sync');
+        $result = $this->sendBatchResult($events, $processed, $cursor, $sessionId, 'page', 'page sync', $builtAt);
         $result['nextCursor'] = $next;
 
         return $result;
@@ -537,10 +600,11 @@ class SyncService implements SyncServiceInterface, ResetInterface
         string $sessionId,
         string $batchLabel,
         string $rateLimitContext,
+        float $builtAt,
     ): array {
         $errors = [];
         if (!empty($events)) {
-            $this->sendEventsInChunks($events, $offset, $sessionId, $batchLabel, $rateLimitContext, $errors);
+            $this->sendEventsInChunks($events, $offset, $sessionId, $batchLabel, $rateLimitContext, $errors, $builtAt);
         }
 
         $result = [
@@ -609,8 +673,8 @@ class SyncService implements SyncServiceInterface, ResetInterface
         // is nothing to render, and a category's plain description field alone
         // (the fallback formatShopPage() otherwise reaches for) is too common and
         // often too thin to justify a page on every one of them. Tree roots are
-        // exempt from that requirement: formatShopPage() always syncs the
-        // navigation root (the home page) even without a layout of its own;
+        // exempt from that requirement: formatShopPage() syncs the navigation
+        // root (the home page) without a layout of its own when it has any text;
         // footer/service roots resolve to null there regardless.
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('active', true));
@@ -644,7 +708,10 @@ class SyncService implements SyncServiceInterface, ResetInterface
             foreach ($formatted as $item) {
                 $events[] = ['type' => 'product.updated', 'data' => $item];
             }
-            $processed++;
+            // A product no synced sales channel shows is not sent, so not counted.
+            if ($formatted !== []) {
+                $processed++;
+            }
         }
 
         return [$events, $processed];

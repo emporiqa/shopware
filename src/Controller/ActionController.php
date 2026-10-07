@@ -7,6 +7,7 @@ namespace Emporiqa\ShopwarePlugin\Controller;
 use Emporiqa\ShopwarePlugin\Service\ActionGuard;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\ConnectServiceInterface;
+use Emporiqa\ShopwarePlugin\Service\CustomerInfoService;
 use Emporiqa\ShopwarePlugin\Service\CustomerPriceService;
 use Emporiqa\ShopwarePlugin\Service\OrderStatusService;
 use Emporiqa\ShopwarePlugin\Service\SignatureHelper;
@@ -23,6 +24,8 @@ use Symfony\Component\Routing\Attribute\Route;
  *
  *   actions/order-status     read-only order lookup, signed both ways (scheme 2)
  *   actions/customer-prices  what one signed-in customer pays, signed the same way
+ *   actions/customer-info    who the signed-in customer is and their newest orders,
+ *                            signed the same way
  *   actions/verify           the origin proof during one-click connect, and the
  *                            signed endpoint challenge
  */
@@ -32,6 +35,7 @@ class ActionController extends StorefrontController
     public const ROUTES = [
         'frontend.emporiqa.actions.order_status',
         'frontend.emporiqa.actions.customer_prices',
+        'frontend.emporiqa.actions.customer_info',
         'frontend.emporiqa.actions.verify',
     ];
 
@@ -44,6 +48,7 @@ class ActionController extends StorefrontController
         private readonly CustomerPriceService $customerPrices,
         private readonly ActionGuard $guard,
         private readonly LoggerInterface $logger,
+        private readonly CustomerInfoService $customerInfo,
     ) {
     }
 
@@ -121,6 +126,23 @@ class ActionController extends StorefrontController
 
                 return $this->customerPrices->handle($payload, $customerId, $productIds, $context, $storeId);
             },
+        );
+    }
+
+    #[Route(path: '/emporiqa/actions/customer-info', name: 'frontend.emporiqa.actions.customer_info', methods: ['POST'], defaults: ['XmlHttpRequest' => true, '_loginRequired' => false, '_httpCache' => false])]
+    public function customerInfo(Request $request, SalesChannelContext $context): Response
+    {
+        return $this->signedAction(
+            $request,
+            $context,
+            'customer_info',
+            function (array $payload, string $storeId): ?array {
+                // No customer is answered "rejected" without a lookup, so it is not counted.
+                $customerId = CustomerPriceService::customerId($payload);
+
+                return $customerId === null ? null : $this->guard->customerInfoLimitHit($storeId, $customerId);
+            },
+            fn (array $payload, string $storeId) => $this->customerInfo->handle($payload, $context->getContext(), $storeId),
         );
     }
 

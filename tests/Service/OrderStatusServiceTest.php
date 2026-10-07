@@ -435,6 +435,8 @@ class OrderStatusServiceTest extends TestCase
         $address->setLastName($last);
         $address->setStreet($street);
         $address->setCity($city);
+        // The DAL always hydrates it; Shopware 6.6 declares it without a default.
+        $address->setZipcode(null);
         $address->setCountry($country);
 
         return $address;

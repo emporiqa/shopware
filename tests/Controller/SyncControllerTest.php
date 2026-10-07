@@ -58,7 +58,6 @@ class SyncControllerTest extends TestCase
         $cmsPageFormatter = $this->createMock(CmsPageFormatterInterface::class);
         $productRepository = $this->createMock(EntityRepository::class);
         $landingPageRepository = $this->createMock(EntityRepository::class);
-        $categoryRepository = $this->createMock(EntityRepository::class);
         $this->salesChannelRepository = $this->createMock(EntityRepository::class);
         $this->mockStorefrontLanguages(['en-GB', 'de-DE']);
         $propertyGroupRepository = $this->createMock(EntityRepository::class);
@@ -89,7 +88,6 @@ class SyncControllerTest extends TestCase
             $cmsPageFormatter,
             $productRepository,
             $landingPageRepository,
-            $categoryRepository,
             $this->salesChannelRepository,
             $propertyGroupRepository,
             $stateMachineStateRepository,
@@ -525,7 +523,6 @@ class SyncControllerTest extends TestCase
             $this->createMock(EntityRepository::class),
             $this->createMock(EntityRepository::class),
             $this->createMock(EntityRepository::class),
-            $this->createMock(EntityRepository::class),
             $this->systemConfigService,
             $this->createMock(MessageBusInterface::class),
             $notice,
@@ -537,6 +534,22 @@ class SyncControllerTest extends TestCase
         $this->assertSame(['Emporiqa test frontend'], $data['headless_channels']);
     }
 
+    /**
+     * S2: the Sync tab showed its own counts (17 pages, 119 products) while
+     * a sync sent 19 and 118. It now shows the counts the sync itself uses.
+     */
+    public function testSyncOverviewShowsTheCountsTheSyncUses(): void
+    {
+        $this->syncService->method('buildChannelContexts')->willReturn([]);
+        $this->syncService->expects($this->exactly(2))->method('countItems')
+            ->willReturnCallback(fn (string $entity) => $entity === 'products' ? 118 : 18);
+
+        $data = json_decode((string) $this->controller->syncOverview(Context::createDefaultContext())->getContent(), true);
+
+        $this->assertSame(118, $data['productCount']);
+        $this->assertSame(18, $data['pageCount']);
+    }
+
     private function rebuildControllerWithConfigService(ConfigServiceInterface&MockObject $configService): SyncController
     {
         return new SyncController(
@@ -546,7 +559,6 @@ class SyncControllerTest extends TestCase
             $this->createMock(ChannelResolverInterface::class),
             $this->createMock(ProductFormatterInterface::class),
             $this->createMock(CmsPageFormatterInterface::class),
-            $this->createMock(EntityRepository::class),
             $this->createMock(EntityRepository::class),
             $this->createMock(EntityRepository::class),
             $this->createMock(EntityRepository::class),

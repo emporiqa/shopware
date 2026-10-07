@@ -459,10 +459,44 @@ class CmsPageFormatterTest extends TestCase
         $this->assertSame('https://shop.example.com/', $result['links']['']['en']);
     }
 
-    public function testFormatShopPageSyncsHomePageEvenWithoutContent(): void
+    /**
+     * S3: a home page that is only a product listing (the "Catalogue #1"
+     * root of a fresh shop) resolves to no text at all and is not a page.
+     * The real-time path and sync.complete delete one sent before.
+     */
+    public function testFormatShopPageSkipsAHomePageWithoutAnyText(): void
     {
-        // Unlike a regular category, the home page is exempt from the content gate:
+        $resolver = $this->createMock(CmsContentResolverInterface::class);
+        $resolver->method('resolveCategoryContent')->willReturn('');
+        $category = $this->homeCategory();
+
+        $this->assertNull((new CmsPageFormatter($resolver))->formatShopPage($category, $this->treeChannelContexts()));
+    }
+
+    public function testFormatShopPageSkipsAHomePageOfOnlyMarkupAndSpaces(): void
+    {
+        $resolver = $this->createMock(CmsContentResolverInterface::class);
+        $resolver->method('resolveCategoryContent')->willReturn("<div> &nbsp; </div>\n");
+
+        $this->assertNull((new CmsPageFormatter($resolver))->formatShopPage($this->homeCategory(), $this->treeChannelContexts()));
+    }
+
+    public function testFormatShopPageSyncsAHomePageWithShortText(): void
+    {
+        // Unlike a regular category, the home page needs no minimum length:
         // it is a single entry per channel, not a source of bloat.
+        $resolver = $this->createMock(CmsContentResolverInterface::class);
+        $resolver->method('resolveCategoryContent')->willReturn('<p>Free shipping from 50 EUR.</p>');
+
+        $result = (new CmsPageFormatter($resolver))->formatShopPage($this->homeCategory(), $this->treeChannelContexts());
+
+        $this->assertNotNull($result);
+        $this->assertSame('<p>Free shipping from 50 EUR.</p>', $result['contents']['']['en']);
+        $this->assertSame('https://shop.example.com/', $result['links']['']['en']);
+    }
+
+    private function homeCategory(): CategoryEntity
+    {
         $category = $this->createMock(CategoryEntity::class);
         $category->method('getId')->willReturn('root-nav');
         $category->method('getParentId')->willReturn(null);
@@ -470,13 +504,10 @@ class CmsPageFormatterTest extends TestCase
         $category->method('getSeoUrls')->willReturn(new SeoUrlCollection([]));
         $category->method('getCmsPage')->willReturn(null);
         $category->method('getTranslations')->willReturn(null);
-        $category->method('getTranslation')->willReturnCallback(fn(string $field) => $field === 'name' ? 'Home' : null);
-        $category->method('getName')->willReturn('Home');
+        $category->method('getTranslation')->willReturnCallback(fn(string $field) => $field === 'name' ? 'Catalogue #1' : null);
+        $category->method('getName')->willReturn('Catalogue #1');
 
-        $result = $this->formatter->formatShopPage($category, $this->treeChannelContexts());
-
-        $this->assertNotNull($result);
-        $this->assertSame('', $result['contents']['']['en']);
+        return $category;
     }
 
     public function testFormatShopPageReturnsNullForFooterAndServiceRoots(): void

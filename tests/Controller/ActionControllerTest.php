@@ -8,6 +8,7 @@ use Emporiqa\ShopwarePlugin\Controller\ActionController;
 use Emporiqa\ShopwarePlugin\Service\ActionGuard;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\ConnectServiceInterface;
+use Emporiqa\ShopwarePlugin\Service\CustomerInfoService;
 use Emporiqa\ShopwarePlugin\Service\CustomerPriceService;
 use Emporiqa\ShopwarePlugin\Service\OrderStatusService;
 use Emporiqa\ShopwarePlugin\Service\SignatureHelper;
@@ -32,6 +33,7 @@ class ActionControllerTest extends TestCase
     private OrderStatusService&MockObject $orderStatus;
     private ActionGuard&MockObject $guard;
     private CustomerPriceService&MockObject $customerPrices;
+    private CustomerInfoService&MockObject $customerInfo;
     private ActionController $controller;
 
     protected function setUp(): void
@@ -43,6 +45,7 @@ class ActionControllerTest extends TestCase
         $this->orderStatus = $this->createMock(OrderStatusService::class);
         $this->guard = $this->createMock(ActionGuard::class);
         $this->customerPrices = $this->createMock(CustomerPriceService::class);
+        $this->customerInfo = $this->createMock(CustomerInfoService::class);
 
         $this->controller = new ActionController(
             $this->config,
@@ -51,6 +54,7 @@ class ActionControllerTest extends TestCase
             $this->customerPrices,
             $this->guard,
             $this->createMock(LoggerInterface::class),
+            $this->customerInfo,
         );
     }
 
@@ -109,7 +113,7 @@ class ActionControllerTest extends TestCase
     {
         $config = $this->createMock(ConfigServiceInterface::class);
         $config->method('getWebhookSecret')->willReturn('');
-        $controller = new ActionController($config, $this->connect, $this->orderStatus, $this->customerPrices, $this->guard, $this->createMock(LoggerInterface::class));
+        $controller = new ActionController($config, $this->connect, $this->orderStatus, $this->customerPrices, $this->guard, $this->createMock(LoggerInterface::class), $this->customerInfo);
 
         $response = $controller->orderStatus($this->request($this->orderBody(), null), $this->context());
 
@@ -191,7 +195,7 @@ class ActionControllerTest extends TestCase
             $this->stringContains('RuntimeException'),
             $this->logicalNot($this->stringContains('a@b.c')),
         ));
-        $controller = new ActionController($this->config, $this->connect, $this->orderStatus, $this->customerPrices, $this->guard, $logger);
+        $controller = new ActionController($this->config, $this->connect, $this->orderStatus, $this->customerPrices, $this->guard, $logger, $this->customerInfo);
         $this->guard->method('rateLimitHit')->willReturn(null);
         $this->orderStatus->method('handle')->willThrowException(new \RuntimeException("Duplicate entry 'a@b.c'"));
 
@@ -339,6 +343,116 @@ class ActionControllerTest extends TestCase
         $this->assertSame(404, $response->getStatusCode());
     }
 
+    // --- customer_info ---
+
+    public function testCustomerInfoAnswerIsSignedAndRemembered(): void
+    {
+        $body = $this->infoBody();
+        $this->guard->expects($this->once())->method('customerInfoLimitHit')->with(self::STORE_ID, self::CUSTOMER)->willReturn(null);
+        $this->customerInfo->expects($this->once())->method('handle')
+            ->with($this->callback(fn (array $p) => $p['customer']['id'] === self::CUSTOMER), $this->anything(), self::STORE_ID)
+            ->willReturn(['status' => 'found', 'data' => ['customer' => ['first_name' => 'Ada'], 'orders' => []]]);
+        $this->guard->expects($this->once())->method('remember')->with(self::STORE_ID, 'req-i', 200, $this->anything());
+
+        $response = $this->controller->customerInfo($this->request($body, $this->sign($body)), $this->context());
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame(['customer' => ['first_name' => 'Ada'], 'orders' => []], $this->decode($response)['data']);
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+        $this->assertResponseSigned($response, 'req-i');
+    }
+
+    /**
+     * The owner's Try it sends test:true inside the signed body: answered
+     * with real data under the normal limits (the call has no side effects).
+     */
+    public function testCustomerInfoTestCallIsAnsweredUnderTheNormalLimits(): void
+    {
+        $body = $this->infoBody(['test' => true]);
+        $this->guard->expects($this->once())->method('customerInfoLimitHit')->willReturn(null);
+        $this->customerInfo->expects($this->once())->method('handle')->willReturn(['status' => 'not_found']);
+
+        $response = $this->controller->customerInfo($this->request($body, $this->sign($body)), $this->context());
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame(['status' => 'not_found'], $this->decode($response));
+    }
+
+    public function testCustomerInfoUnsignedIsRefusedWithoutALookup(): void
+    {
+        $this->customerInfo->expects($this->never())->method('handle');
+        $this->guard->expects($this->never())->method('customerInfoLimitHit');
+
+        $response = $this->controller->customerInfo($this->request($this->infoBody(), null), $this->context());
+
+        $this->assertSame(401, $response->getStatusCode());
+        $this->assertFalse($response->headers->has('X-Emporiqa-Response-Signature'));
+    }
+
+    public function testCustomerInfoForAnotherRuleNameIsInvalid(): void
+    {
+        $body = $this->pricesBody();
+        $this->customerInfo->expects($this->never())->method('handle');
+
+        $this->assertSame(400, $this->controller->customerInfo($this->request($body, $this->sign($body)), $this->context())->getStatusCode());
+    }
+
+    public function testCustomerInfoWithoutACustomerIsNotCounted(): void
+    {
+        $body = $this->infoBody(['customer' => null]);
+        $this->guard->expects($this->never())->method('customerInfoLimitHit');
+        $this->customerInfo->method('handle')->willReturn(['status' => 'rejected', 'message_code' => 'missing_field']);
+
+        $response = $this->controller->customerInfo($this->request($body, $this->sign($body)), $this->context());
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('rejected', $this->decode($response)['status']);
+    }
+
+    public function testCustomerInfoRateLimitIsASigned429(): void
+    {
+        $body = $this->infoBody();
+        $this->guard->method('customerInfoLimitHit')->willReturn(['scope' => 'store', 'retry_after' => 120]);
+        $this->customerInfo->expects($this->never())->method('handle');
+
+        $response = $this->controller->customerInfo($this->request($body, $this->sign($body)), $this->context());
+
+        $this->assertSame(429, $response->getStatusCode());
+        $this->assertSame('store', $this->decode($response)['data']['scope']);
+        $this->assertSame('120', $response->headers->get('Retry-After'));
+        $this->assertResponseSigned($response, 'req-i');
+    }
+
+    public function testCustomerInfoReplayGetsTheSameAnswerWithoutALookup(): void
+    {
+        $body = $this->infoBody();
+        $this->guard->method('remembered')->with(self::STORE_ID, 'req-i')->willReturn([200, '{"status":"found","data":{"orders":[]}}']);
+        $this->guard->expects($this->never())->method('customerInfoLimitHit');
+        $this->customerInfo->expects($this->never())->method('handle');
+
+        $response = $this->controller->customerInfo($this->request($body, $this->sign($body)), $this->context());
+
+        $this->assertSame('{"status":"found","data":{"orders":[]}}', $response->getContent());
+        $this->assertResponseSigned($response, 'req-i');
+    }
+
+    public function testCustomerInfoErrorAnswersInternalWithoutDetails(): void
+    {
+        $body = $this->infoBody();
+        $this->guard->method('customerInfoLimitHit')->willReturn(null);
+        $this->customerInfo->method('handle')->willThrowException(new \RuntimeException("Duplicate entry 'ada@example.com'"));
+
+        $response = $this->controller->customerInfo($this->request($body, $this->sign($body)), $this->context());
+
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertSame(['status' => 'error', 'message_code' => 'internal'], $this->decode($response));
+    }
+
+    public function testCustomerInfoAnswersInMaintenanceMode(): void
+    {
+        $this->assertContains('frontend.emporiqa.actions.customer_info', ActionController::ROUTES);
+    }
+
     // --- helpers ---
 
     /**
@@ -355,6 +469,19 @@ class ActionControllerTest extends TestCase
             'language' => 'de',
             'customer' => ['id' => self::CUSTOMER],
             'products' => ['product-' . self::PRODUCT],
+        ], $override));
+    }
+
+    /**
+     * @param array<string, mixed> $override
+     */
+    private function infoBody(array $override = []): string
+    {
+        return (string) json_encode(array_merge([
+            'rule' => 'customer_info',
+            'request_id' => 'req-i',
+            'customer' => ['id' => self::CUSTOMER],
+            'language' => 'de',
         ], $override));
     }
 

@@ -7,11 +7,12 @@ namespace Emporiqa\ShopwarePlugin\Service;
 use Emporiqa\ShopwarePlugin\EmporiqaIntegration;
 use Emporiqa\ShopwarePlugin\Exception\RateLimitException;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 
-class WebhookClient implements WebhookClientInterface
+class WebhookClient implements WebhookClientInterface, TransientFailureAwareInterface
 {
     /**
      * Test connection warns from 2 minutes, well inside the 5 minutes
@@ -23,10 +24,13 @@ class WebhookClient implements WebhookClientInterface
 
     private ?string $lastError = null;
 
+    private bool $lastFailureTransient = false;
+
     public function __construct(
         private readonly ConfigServiceInterface $config,
         private readonly LoggerInterface $logger,
         ?Client $client = null,
+        private readonly int $retryDelayMicroseconds = 1_000_000,
     ) {
         $this->client = $client ?? new Client();
     }
@@ -34,6 +38,11 @@ class WebhookClient implements WebhookClientInterface
     public function getLastError(): ?string
     {
         return $this->lastError;
+    }
+
+    public function isLastFailureTransient(): bool
+    {
+        return $this->lastFailureTransient;
     }
 
     /**
@@ -202,6 +211,8 @@ class WebhookClient implements WebhookClientInterface
     {
         $url = $this->config->getFullWebhookUrl();
 
+        $this->lastFailureTransient = false;
+
         for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
             try {
                 $response = $this->doRequestRaw($url, $payload);
@@ -223,13 +234,17 @@ class WebhookClient implements WebhookClientInterface
                     $this->logger->warning('[Emporiqa] Server error ' . $statusCode . ' (attempt ' . $attempt . '/' . $maxRetries . ')' . ($body !== '' ? ', ' . mb_substr($body, 0, 500) : ''));
 
                     if ($attempt < $maxRetries) {
-                        usleep($attempt * 1_000_000);
+                        usleep($attempt * $this->retryDelayMicroseconds);
                         continue;
                     }
+
+                    $this->lastFailureTransient = true;
 
                     return false;
                 }
 
+                // Any other answer (401 signature, 400 validation, 404 unknown
+                // store...) comes back the same however often it is re-sent.
                 $body = (string) $response->getBody();
                 $this->lastError = $this->buildFriendlyError($body);
                 $this->logger->warning('[Emporiqa] Unexpected status code: ' . $statusCode . ($body !== '' ? ', ' . mb_substr($body, 0, 500) : ''));
@@ -242,19 +257,24 @@ class WebhookClient implements WebhookClientInterface
                 $this->logger->error('[Emporiqa] Failed to encode payload: ' . $e->getMessage());
 
                 return false;
-            } catch (\RuntimeException $e) {
-                $this->lastError = $e->getMessage();
-                $this->logger->warning('[Emporiqa] ' . $e->getMessage());
-
-                return false;
             } catch (GuzzleException $e) {
+                // Before \RuntimeException: Guzzle's exceptions extend it. Only a
+                // refused or failed connect is retried here, as it fails fast; a
+                // read timeout already waited 30 s and is left to the queue's retry.
                 $this->lastError = $e->getMessage();
                 $this->logger->warning('[Emporiqa] Request failed (attempt ' . $attempt . '/' . $maxRetries . '): ' . $e->getMessage());
 
-                if ($attempt < $maxRetries) {
-                    usleep($attempt * 1_000_000);
+                if ($attempt < $maxRetries && $e instanceof ConnectException) {
+                    usleep($attempt * $this->retryDelayMicroseconds);
                     continue;
                 }
+
+                $this->lastFailureTransient = true;
+
+                return false;
+            } catch (\RuntimeException $e) {
+                $this->lastError = $e->getMessage();
+                $this->logger->warning('[Emporiqa] ' . $e->getMessage());
 
                 return false;
             }

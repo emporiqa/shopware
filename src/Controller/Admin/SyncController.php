@@ -12,7 +12,6 @@ use Emporiqa\ShopwarePlugin\Service\HeadlessChannelNotice;
 use Emporiqa\ShopwarePlugin\Service\ProductFormatterInterface;
 use Emporiqa\ShopwarePlugin\Service\SyncServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\WebhookClientInterface;
-use Shopware\Core\Content\Category\CategoryCollection;
 use Shopware\Core\Content\LandingPage\LandingPageCollection;
 use Shopware\Core\Content\Product\ProductCollection;
 use Shopware\Core\Content\Product\ProductEntity;
@@ -53,7 +52,6 @@ class SyncController extends AbstractController
     /**
      * @param EntityRepository<ProductCollection> $productRepository
      * @param EntityRepository<LandingPageCollection> $landingPageRepository
-     * @param EntityRepository<CategoryCollection> $categoryRepository
      * @param EntityRepository<SalesChannelCollection> $salesChannelRepository
      * @param EntityRepository<PropertyGroupCollection> $propertyGroupRepository
      * @param EntityRepository<StateMachineStateCollection> $stateMachineStateRepository
@@ -67,7 +65,6 @@ class SyncController extends AbstractController
         private readonly CmsPageFormatterInterface $cmsPageFormatter,
         private readonly EntityRepository $productRepository,
         private readonly EntityRepository $landingPageRepository,
-        private readonly EntityRepository $categoryRepository,
         private readonly EntityRepository $salesChannelRepository,
         private readonly EntityRepository $propertyGroupRepository,
         private readonly EntityRepository $stateMachineStateRepository,
@@ -312,28 +309,9 @@ class SyncController extends AbstractController
     public function syncOverview(Context $context): JsonResponse
     {
         try {
-            $productCriteria = new Criteria();
-            $productCriteria->addFilter(new EqualsFilter('active', true));
-            $productCriteria->addFilter(new EqualsFilter('parentId', null));
-            $productCriteria->setLimit(1);
-            $productCriteria->setTotalCountMode(Criteria::TOTAL_COUNT_MODE_EXACT);
-            $productCount = $this->productRepository->search($productCriteria, $context)->getTotal();
-
-            $pageCriteria = new Criteria();
-            $pageCriteria->addFilter(new EqualsFilter('active', true));
-            $pageCriteria->setLimit(1);
-            $pageCriteria->setTotalCountMode(Criteria::TOTAL_COUNT_MODE_EXACT);
-            $landingPageCount = $this->landingPageRepository->search($pageCriteria, $context)->getTotal();
-
-            $shopPageCriteria = new Criteria();
-            $shopPageCriteria->addFilter(new EqualsFilter('active', true));
-            $shopPageCriteria->addFilter(new EqualsFilter('type', 'page'));
-            $shopPageCriteria->addFilter(new EqualsFilter('cmsPage.type', 'page'));
-            $shopPageCriteria->setLimit(1);
-            $shopPageCriteria->setTotalCountMode(Criteria::TOTAL_COUNT_MODE_EXACT);
-            $shopPageCount = $this->categoryRepository->search($shopPageCriteria, $context)->getTotal();
-
-            $pageCount = $landingPageCount + $shopPageCount;
+            // The numbers a sync sends, counted as the sync itself decides.
+            $productCount = $this->syncService->countItems('products');
+            $pageCount = $this->syncService->countItems('pages');
 
             $channelContexts = $this->syncService->buildChannelContexts();
             $channelMapping = $this->channelResolver->getMapping();

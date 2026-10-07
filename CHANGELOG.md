@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.2 (2026-10-07)
+
+### Added
+- **Customer info.** A read-only endpoint (`/emporiqa/actions/customer-info`), signed and rate limited like Customer prices (30 calls per customer and 600 per store every 10 minutes, deduplicated on `request_id`), that tells Emporiqa who the signed-in shopper is: the name and email of their customer account and their 10 newest orders (order number, date, status, total and currency), so the chat can answer "where is my order?" without asking for a number. Only the account's own orders in the sales channels synced to that Emporiqa store are listed; a guest order placed with the same email is not one of them, and a guest checkout's customer record gets `not_found`. Status labels are in the order's language, and the status is worked out exactly as for Order status. Nothing else is sent: no addresses, phone, customer group or internal ids. Extensions can change the answer, remove fields or add their own under `extra` with the new `CustomerInfoResponseEvent` (see the README). Emporiqa will use it in an upcoming release.
+
+### Fixed
+- **Changes made while Emporiqa is unreachable are no longer lost.** When Emporiqa could not be reached or answered with a server error, a product, page or order change was tried three more times within about 7 seconds and then parked in Shopware's `failed` queue, which the usual worker setup never reads. It is now sent again after 1, 5 and 15 minutes and then hourly, six times in all (about 2 hours 20 minutes). A newer save of the same product or page that reaches Emporiqa in the meantime wins: the older version is not sent again over it. A change Emporiqa refuses (for example a wrong webhook secret) is not retried and is logged once. A refused connection is now also retried right away, as intended, before the change is queued again.
+- **The Sync tab counts what a sync sends.** It counted every active product and page, including a product no synced sales channel shows and pages without a layout, so the numbers did not match the sync (for example 17 pages shown and 19 sent, 119 products shown and 118 sent). It now counts products visible in a synced sales channel and the pages a sync actually sends, and the sync's own result counts the products it sent rather than the ones it read.
+- **A home page without any text is no longer synced as an empty page.** A storefront whose home page is only a product listing (such as "Catalogue #1" in a fresh shop) was sent to Emporiqa as a page with a title and no content. It is left out now, and the empty page already in Emporiqa is removed once after updating (on the first storefront page view).
+
 ## 1.3.1 (2026-10-06)
 
 ### Added

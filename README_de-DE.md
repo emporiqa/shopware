@@ -45,6 +45,8 @@ Nach der Installation über einen der beiden Wege:
 
 **Bestellstatus.** Sobald Emporiqa Ihrem Shop fertige Regeln anbietet (nach dem Verbinden oder einem Verbindungstest), zeigt der Tab „Einstellungen“ die Karte **Fertige Regeln** mit der **Adresse für den Bestellstatus**. Klicken Sie neben „Order status“ auf **In Emporiqa öffnen** und dann in Emporiqa auf **Try it**, um die Regel zu testen, und auf **Go live**, um sie einzuschalten (das Dashboard ist englischsprachig). Sie müssen nichts kopieren: Emporiqa trägt die Adresse Ihres Shops beim Verbinden mit einem Klick selbst ein. Falls Emporiqa doch einmal danach fragt, verwenden Sie die Adresse auf der Karte (mit Kopieren-Schaltfläche). Die Regel beantwortet „Wo ist meine Bestellung?“ aus Ihren Shopware-Bestellungen: Ein angemeldeter Kunde nennt nur die Bestellnummer, ein Gast zusätzlich die E-Mail-Adresse der Bestellung. Ist nachgewiesen, dass die Bestellung ihm gehört, nennt der Chat Status, Datum, Sendungsverfolgung, Lieferzeit, Artikel und Gesamtbetrag und auf Nachfrage Zahlungs-, Liefer- und Rechnungsdaten.
 
+**Kundeninfo.** Für einen angemeldeten Kunden beantwortet das Plugin außerdem den signierten Kundeninfo-Aufruf von Emporiqa: Name und E-Mail-Adresse seines Kundenkontos und seine 10 neuesten Bestellungen (Nummer, Datum, Status und Gesamtbetrag), damit der Chat „Wo ist meine Bestellung?“ beantworten kann, ohne nach der Nummer zu fragen. Enthalten sind nur die eigenen Bestellungen des Kontos in den Verkaufskanälen, die mit Ihrem Emporiqa-Shop synchronisiert werden; eine Gastbestellung mit derselben E-Mail-Adresse gehört nicht dazu. Einzurichten ist nichts: Emporiqa nutzt sie, sobald der Chat sie unterstützt.
+
 Die ältere Bestellverfolgung funktioniert weiter wie bisher. Wo fertige Regeln angeboten werden, steht sie unter **Erweitert** als *Alte Bestellverfolgung (veraltet)*: Sobald „Order status“ eingeschaltet ist, entfernen Sie ihre Adresse in Ihrem Emporiqa-Dashboard (**Settings > Integration > For your developer > Order tracking API URL**, das Dashboard ist englischsprachig) und schalten Sie sie dann aus.
 
 ## Konfiguration
@@ -70,6 +72,8 @@ Empfohlen ist der Weg über **Mit Emporiqa verbinden** (One-Click-Handshake, Sie
 | Webhook-URL | Emporiqa-Webhook-Endpunkt | `https://emporiqa.com/webhooks/sync/` |
 | Stapelgröße | Produkte bzw. Seiten pro Webhook-Anfrage bei der Massensynchronisierung | 50 |
 
+Der Tab **Synchronisierung** zeigt, wie viele Produkte und Seiten eine Synchronisierung sendet: Produkte, die in einem synchronisierten Verkaufskanal sichtbar sind, und Seiten, die dort erreichbar sind (eine Kategorieseite nur mit eigenem Text, die Startseite nur, wenn sie überhaupt Text hat).
+
 **Headless-Verkaufskanäle** (Typ Headless/API) werden nicht synchronisiert: Shopware erzeugt für sie keine Produktadressen (SEO-URLs), daher hätte der Chat keine Produktlinks. Storefront-Verkaufskanäle werden wie gewohnt synchronisiert. Der Verbindungstest und der Tab „Synchronisierung“ nennen jeden aktiven Headless-Kanal, in dem Produkte sichtbar sind. Das Chat-Widget kommt mit dem Storefront-Theme; auf einem Frontend, das Shopware nicht ausliefert, binden Sie es mit dem [Einbettungscode](https://emporiqa.com/docs/widget-embedding/) ein.
 
 Die Warenkorb-Aktionen im Chat sind immer aktiv. Die Identität eines angemeldeten Kunden erreicht den Chat nur über einen nicht zwischengespeicherten Endpunkt beim Öffnen des Chats, nie über die Seite oder die Widget-URL. Die alte Bestellverfolgung steht, wo fertige Regeln angeboten werden, mit einem Schalter unter „Erweitert“ (standardmäßig eingeschaltet).
@@ -84,6 +88,8 @@ Das Plugin überträgt Produkt-, Seiten- und Bestelländerungen über die Events
 
 Manche Änderungen betreffen den gesamten Katalog (Bearbeitung von Kategorien, Herstellern oder Währungen, eine neue Sprache, geänderte Aktionen). Eine synchrone Neusynchronisierung Produkt für Produkt aus diesen Events heraus würde die Admin-Anfrage blockieren. Das Plugin schreibt deshalb eine Warnung mit Handlungshinweis in das Shopware-Log (`var/log/`) und überlässt die Aktualisierung des Katalogs einem manuellen Durchlauf.
 
+Ist Emporiqa nicht erreichbar oder antwortet mit einem Serverfehler, wird eine Änderung nach 1, 5 und 15 Minuten und danach stündlich erneut gesendet, insgesamt sechsmal (etwa 2 Stunden 20 Minuten), sodass bei einem kurzen Ausfall nichts verloren geht. Erreicht eine neuere Speicherung desselben Produkts oder derselben Seite Emporiqa zuerst, wird die ältere Fassung nicht darüber gesendet. Eine Änderung, die Emporiqa ablehnt (zum Beispiel nach einem geänderten Webhook-Geheimnis), wird nicht wiederholt; sie wird protokolliert und in Shopwares Warteschlange `failed` aufbewahrt, aus der `bin/console messenger:failed:retry` sie erneut sendet, sobald die Ursache behoben ist.
+
 Zeitlich begrenzte Aktionen (erweiterte Preise einer Regel mit Zeitraum) erscheinen im Chat, wenn sie beginnen, und verschwinden, wenn sie enden: Eine geplante Aufgabe synchronisiert die betroffenen Produkte alle 15 Minuten neu. Ihr Shop muss dafür die geplanten Aufgaben von Shopware ausführen (`bin/console scheduled-task:run` oder den Admin-Worker). Preise aus Regeln nach Uhrzeit oder Wochentag werden nie übertragen; der Chat nennt den Preis, der außerhalb dieser Zeiten gilt.
 
 Führen Sie im Tab **Synchronisierung** eine vollständige Synchronisierung aus, wenn:
@@ -91,7 +97,7 @@ Führen Sie im Tab **Synchronisierung** eine vollständige Synchronisierung aus,
 - eine der Warnungen zu katalogweiten Änderungen im Shopware-Log steht
 - Sie einen Verkaufskanal hinzufügen oder neu zuweisen (bestehende Produkte tragen die Daten des neuen Kanals erst dann, wenn sie aus anderem Anlass geändert werden)
 - Sie Produkte per Massenimport anlegen oder Katalogdaten direkt in die Datenbank schreiben (solche Wege können die Standard-Events umgehen)
-- Emporiqa längere Zeit nicht erreichbar war (Netzwerkausfall, geplante Wartung, abgelaufene Zugangsdaten)
+- Emporiqa länger als etwa zwei Stunden nicht erreichbar war oder Änderungen abgelehnt hat (Netzwerkausfall, geplante Wartung, abgelaufene Zugangsdaten)
 
 Führen Sie zur Sicherheit einmal pro Woche eine vollständige Synchronisierung aus, um Abweichungen aufzufangen, die sich durch Fehler im Hintergrund angesammelt haben könnten.
 
@@ -117,7 +123,7 @@ EmporiqaIntegration/
 │   │   ├── Admin/SyncController.php     # Admin-Endpunkte für Synchronisierung und Datenvorschau
 │   │   ├── Admin/ConnectController.php  # Endpunkte der One-Click-Verbindung (PKCE)
 │   │   ├── CartController.php           # Warenkorb-API für den Chat
-│   │   ├── ActionController.php         # Fertige Regeln: Bestellstatus, Kundenpreise + Adressprüfung (beidseitig signiert)
+│   │   ├── ActionController.php         # Fertige Regeln: Bestellstatus, Kundenpreise, Kundeninfo + Adressprüfung (beidseitig signiert)
 │   │   ├── UserTokenController.php      # Nicht zwischengespeichertes Kunden-Token für den Chat
 │   │   └── OrderTrackingController.php  # Alter HMAC-signierter Endpunkt der Bestellverfolgung (veraltet)
 │   ├── Service/
@@ -162,6 +168,7 @@ Entwickler können Symfony-Events abonnieren, um Payloads oder das Verhalten des
 | `PostPageFormatEvent` | Seiten-Payload vor dem Senden ändern |
 | `PostOrderFormatEvent` | Bestell-Payload vor dem Senden ändern |
 | `OrderStatusResponseEvent` | Antwort der Regel „Order status“ (`data`) ändern |
+| `CustomerInfoResponseEvent` | Kundeninfo-Antwort (`data`) ändern: Felder entfernen oder `extra` hinzufügen |
 | `OrderTrackingResponseEvent` | Antwort der alten Bestellverfolgung ändern |
 | `WidgetParamsEvent` | Einbindungsparameter des Chat-Widgets ändern |
 | `PreSyncEvent` / `PostSyncEvent` | Logik vor und nach einem Lauf der Massensynchronisierung ausführen |
@@ -185,7 +192,24 @@ public function onOrderStatus(OrderStatusResponseEvent $event): void
 }
 ```
 
-Jeder Service ist gegen ein Interface definiert (`ProductFormatterInterface`, `CmsPageFormatterInterface`, `SyncServiceInterface`, `WebhookClientInterface`, `ChannelResolverInterface`, `ConfigServiceInterface`, `ConnectServiceInterface`), sodass sich jeder davon mit einem gewöhnlichen Symfony-Service-Decorator dekorieren lässt.
+**Die Kundeninfo-Antwort ändern.** `CustomerInfoResponseEvent` läuft, nachdem das Plugin `data` gefüllt hat: `customer` (`name`, `first_name`, `last_name`, `email`) und `orders` (bis zu 10, die neueste zuerst, jeweils `order_number`, `placed_at`, `status_code`, `status_label`, `total`, `currency`). `getCustomer()` und `getOrders()` liefern die geladenen Entitäten. Entfernen Sie, was Sie nicht teilen möchten, oder fügen Sie unter `extra` eigene Felder hinzu (mit denselben Grenzen wie bei „Order status“). Die Antwort betrifft nur den angemeldeten Kunden; fügen Sie nichts über andere Personen hinzu.
+
+```php
+public static function getSubscribedEvents(): array
+{
+    return [CustomerInfoResponseEvent::class => 'onCustomerInfo'];
+}
+
+public function onCustomerInfo(CustomerInfoResponseEvent $event): void
+{
+    $data = $event->getData();
+    unset($data['customer']['email']);
+    $data['extra'] = ['loyalty_tier' => 'Gold'];
+    $event->setData($data);
+}
+```
+
+Jeder Service ist gegen ein Interface definiert (`ProductFormatterInterface`, `CmsPageFormatterInterface`, `SyncServiceInterface`, `WebhookClientInterface`, `ChannelResolverInterface`, `ConfigServiceInterface`, `ConnectServiceInterface`), sodass sich jeder davon mit einem gewöhnlichen Symfony-Service-Decorator dekorieren lässt. Ein Decorator von `WebhookClientInterface`, der das Wiederholungsverhalten erhalten soll, implementiert zusätzlich `TransientFailureAwareInterface` (und reicht `isLastFailureTransient()` durch); ohne das wird jeder fehlgeschlagene Versand wiederholt, als wäre Emporiqa nicht erreichbar.
 
 ## Preise
 

@@ -15,7 +15,10 @@ use PHPUnit\Framework\MockObject\MockObject;
 use Emporiqa\ShopwarePlugin\Tests\Support\EntityCollectionHelper;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
+use Shopware\Core\Content\Category\CategoryCollection;
 use Shopware\Core\Content\Category\CategoryEntity;
+use Shopware\Core\Content\LandingPage\LandingPageCollection;
+use Shopware\Core\Content\Product\Aggregate\ProductVisibility\ProductVisibilityDefinition;
 use Shopware\Core\Content\LandingPage\LandingPageEntity;
 use Shopware\Core\Content\Product\ProductCollection;
 use Shopware\Core\Content\Product\ProductEntity;
@@ -23,7 +26,12 @@ use Shopware\Core\Defaults;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityCollection;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Pricing\CashRoundingConfig;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Metric\CountAggregation;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\AggregationResult\AggregationResultCollection;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\AggregationResult\Metric\CountResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsAnyFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\MultiFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\RangeFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
 use Shopware\Core\Framework\Uuid\Uuid;
@@ -32,6 +40,7 @@ use Shopware\Core\System\Language\LanguageEntity;
 use Shopware\Core\System\Locale\LocaleEntity;
 use Shopware\Core\System\SalesChannel\Aggregate\SalesChannelDomain\SalesChannelDomainCollection;
 use Shopware\Core\System\SalesChannel\Aggregate\SalesChannelDomain\SalesChannelDomainEntity;
+use Shopware\Core\System\SalesChannel\SalesChannelCollection;
 use Shopware\Core\System\SalesChannel\SalesChannelEntity;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
@@ -244,19 +253,122 @@ class SyncServiceTest extends TestCase
 
     // --- countItems ---
 
-    public function testCountItemsReturnsProductTotal(): void
+    /**
+     * S2: the Sync tab counted 119 products while 118 were sent: a product no
+     * synced sales channel shows (no visibility, or "Hide in listings and
+     * search") is not sent, so it is not counted either.
+     */
+    public function testCountItemsCountsProductsVisibleInASyncedSalesChannel(): void
     {
-        $this->productRepository->method('search')->willReturn($this->wrapTotalResult(42));
+        $captured = null;
+        $this->productRepository->method('aggregate')->willReturnCallback(function (Criteria $criteria) use (&$captured) {
+            $captured = $criteria;
+
+            return new AggregationResultCollection([new CountResult('products', 42)]);
+        });
 
         $this->assertSame(42, $this->service->countItems('products'));
+        // Distinct products: a search total would count a product once per matching visibility row.
+        $this->assertInstanceOf(CountAggregation::class, $captured->getAggregation('products'));
+        $this->assertSame('id', $captured->getAggregation('products')->getField());
+
+        $visibility = null;
+        foreach ($captured->getFilters() as $filter) {
+            if ($filter instanceof MultiFilter) {
+                $visibility = $filter;
+            }
+        }
+        $this->assertNotNull($visibility, 'one AND filter, so both hold for the same visibility row');
+        $this->assertSame(MultiFilter::CONNECTION_AND, $visibility->getOperator());
+        [$channels, $level] = $visibility->getQueries();
+        $this->assertInstanceOf(EqualsAnyFilter::class, $channels);
+        $this->assertSame('visibilities.salesChannelId', $channels->getField());
+        $this->assertSame(['sc-1'], $channels->getValue());
+        $this->assertInstanceOf(RangeFilter::class, $level);
+        $this->assertSame('visibilities.visibility', $level->getField());
+        $this->assertSame([RangeFilter::GTE => ProductVisibilityDefinition::VISIBILITY_SEARCH], $level->getParameters());
     }
 
-    public function testCountItemsSumsLandingPagesAndShopPages(): void
+    /**
+     * S2: the Sync tab showed 17 pages, the sync sent 19 and sync-init
+     * counted 27. Pages are now counted as the sync decides: landing pages
+     * assigned to a synced channel, category pages with text of their own,
+     * the home page only with any text.
+     */
+    public function testCountItemsCountsThePagesASyncSends(): void
     {
-        $this->landingPageRepository->method('search')->willReturn($this->wrapTotalResult(5));
-        $this->categoryRepository->method('search')->willReturn($this->wrapTotalResult(3));
+        $assigned = $this->landingPage('lp-1', ['sc-1']);
+        $unassigned = $this->landingPage('lp-2', []);
+        $this->landingPageRepository->method('search')
+            ->willReturn($this->wrapSearchResult([$assigned, $unassigned], LandingPageCollection::class));
 
-        $this->assertSame(8, $this->service->countItems('pages'));
+        $withText = $this->category('cat-1', 'root-nav', str_repeat('Size guide for every boot we sell. ', 4));
+        $listingOnly = $this->category('cat-2', 'root-nav', '');
+        $emptyHome = $this->category('root-nav', null, '');
+        $this->categoryRepository->method('search')
+            ->willReturn($this->wrapSearchResult([$withText, $listingOnly, $emptyHome], CategoryCollection::class));
+
+        $this->assertSame(2, $this->service->countItems('pages'));
+    }
+
+    public function testCountItemsIsZeroWithoutSyncedSalesChannels(): void
+    {
+        $this->config->method('getEnabledLanguages')->willReturn(['fr-FR']);
+        $this->productRepository->expects($this->never())->method('aggregate');
+
+        $this->assertSame(0, $this->service->countItems('products'));
+    }
+
+    /**
+     * The sync's own result says how many products it sent, not how many it
+     * read: a product no synced channel shows produces no event.
+     */
+    public function testSyncProductsCountsOnlyProductsThatWereSent(): void
+    {
+        $shown = $this->createMock(ProductEntity::class);
+        $hidden = $this->createMock(ProductEntity::class);
+        $this->mockProductSearchSequence([$shown, $hidden]);
+        $this->productFormatter->method('formatProduct')->willReturnCallback(
+            fn (ProductEntity $product) => $product === $shown ? [['identification_number' => 'product-1']] : [],
+        );
+
+        $result = $this->service->syncProducts(null, true);
+
+        $this->assertSame(1, $result['products']);
+        $this->assertSame(1, $result['events']);
+    }
+
+    /**
+     * @param list<string> $salesChannelIds
+     */
+    private function landingPage(string $id, array $salesChannelIds): LandingPageEntity
+    {
+        $page = new LandingPageEntity();
+        $page->setId($id);
+        $page->setActive(true);
+        $page->setTranslated(['name' => 'Emporiqa test page ' . $id]);
+        $channels = new SalesChannelCollection();
+        foreach ($salesChannelIds as $salesChannelId) {
+            $channel = new SalesChannelEntity();
+            $channel->setId($salesChannelId);
+            $channels->add($channel);
+        }
+        $page->setSalesChannels($channels);
+
+        return $page;
+    }
+
+    private function category(string $id, ?string $parentId, string $description): CategoryEntity
+    {
+        $category = new CategoryEntity();
+        $category->setId($id);
+        $category->setParentId($parentId);
+        $category->setPath($parentId !== null ? '|' . $parentId . '|' : null);
+        $category->setType('page');
+        $category->setActive(true);
+        $category->setTranslated(['name' => 'Emporiqa test ' . $id, 'description' => $description]);
+
+        return $category;
     }
 
     public function testCountItemsReturnsZeroForUnknownEntity(): void
@@ -557,14 +669,6 @@ class SyncServiceTest extends TestCase
             $this->channelResolver,
             $this->logger,
         );
-    }
-
-    private function wrapTotalResult(int $total): EntitySearchResult&MockObject
-    {
-        $result = $this->createMock(EntitySearchResult::class);
-        $result->method('getTotal')->willReturn($total);
-
-        return $result;
     }
 
     /**

@@ -156,7 +156,8 @@ class PageResyncMessageHandler
 
         // The navigation root is the storefront home page and is always a
         // candidate, with or without its own CMS layout - formatShopPage() syncs
-        // it either way. Footer/service tree roots are organisational only.
+        // it when it has any text, else syncCategory() deletes it. Footer/service
+        // tree roots are organisational only.
         if ($category->getParentId() === null) {
             if (!$this->isHomeRoot($category)) {
                 return false;

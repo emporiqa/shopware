@@ -132,9 +132,11 @@ class CmsPageFormatter implements CmsPageFormatterInterface
         // blocks of its own resolves to no substantial content anywhere - a bare
         // heading repeating the category name does not count, see
         // MIN_CONTENT_LENGTH; syncing it would only add a title and a link. The
-        // home page is exempt: there is at most one per channel, so it carries no
-        // bloat risk, and it is worth syncing even when its layout has little text.
-        if (!$isHome && !$this->hasSubstantialContent($contents)) {
+        // home page only needs some text: there is at most one per channel, so a
+        // short one is worth syncing, but a home page that is only a product
+        // listing (the "Catalogue #1" root of a fresh shop) would be a page with
+        // nothing in it. Callers send a delete when this returns null.
+        if ($isHome ? !$this->hasContent($contents) : !$this->hasSubstantialContent($contents)) {
             return null;
         }
 
@@ -254,6 +256,24 @@ class CmsPageFormatter implements CmsPageFormatterInterface
         }
 
         return array_values($targets);
+    }
+
+    /**
+     * @param array<string, array<string, string>> $contents
+     */
+    private function hasContent(array $contents): bool
+    {
+        foreach ($contents as $byLanguage) {
+            foreach ($byLanguage as $content) {
+                // Visible text: no tags, and no (non-breaking or zero-width) space only.
+                $text = html_entity_decode(strip_tags((string) $content), \ENT_QUOTES | \ENT_HTML5, 'UTF-8');
+                if (preg_match('/[^\s\x{00A0}\x{200B}\x{FEFF}]/u', $text) === 1) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
