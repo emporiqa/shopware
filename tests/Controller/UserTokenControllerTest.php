@@ -24,6 +24,7 @@ class UserTokenControllerTest extends TestCase
     {
         $customer = new CustomerEntity();
         $customer->setId('0190aaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+        $customer->setGuest(false);
 
         $response = $this->controller()->getToken($this->context($customer));
         $token = json_decode((string) $response->getContent(), true)['token'];
@@ -35,6 +36,54 @@ class UserTokenControllerTest extends TestCase
         $this->assertSame('st_1', $claims['aud']);
         $this->assertNoStore($response->headers->get('Cache-Control'));
         $this->assertSame('Cookie', $response->headers->get('Vary'));
+    }
+
+    /**
+     * After a guest checkout Shopware keeps the guest's customer record in the
+     * session. A guest is not signed in, so no token is issued for it: the
+     * platform would otherwise treat the guest record as a signed-in customer.
+     */
+    public function testAGuestCheckoutSessionGetsNoToken(): void
+    {
+        $customer = new CustomerEntity();
+        $customer->setId('0190bbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+        $customer->setGuest(true);
+
+        $response = $this->controller()->getToken($this->context($customer));
+
+        $this->assertSame(['token' => null], json_decode((string) $response->getContent(), true));
+        $this->assertNoStore($response->headers->get('Cache-Control'));
+    }
+
+    /**
+     * The storefront asks for a token only when the page says the shopper is
+     * signed in; a guest checkout session must not say so.
+     *
+     * @return iterable<string, array{0: ?array<string, bool>, 1: bool}>
+     */
+    public static function storefrontCustomers(): iterable
+    {
+        yield 'no customer' => [null, false];
+        yield 'guest checkout' => [['guest' => true], false];
+        yield 'customer account' => [['guest' => false], true];
+    }
+
+    /**
+     * @param array<string, bool>|null $customer
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('storefrontCustomers')]
+    public function testTheStorefrontMarksOnlyAccountCustomersAsSignedIn(?array $customer, bool $loggedIn): void
+    {
+        $template = (string) file_get_contents(__DIR__ . '/../../src/Resources/views/storefront/base.html.twig');
+        $template = (string) preg_replace('/{%\s*sw_extends[^%]*%}/', '', $template);
+        $template = str_replace('{{ parent() }}', '', $template);
+        $twig = new \Twig\Environment(new \Twig\Loader\ArrayLoader(['base' => $template]), ['strict_variables' => false]);
+
+        $html = $twig->render('base', ['emporiqaConfig' => ['storeId' => 'st_1'], 'context' => ['customer' => $customer]]);
+
+        $this->assertSame(1, preg_match('/data-emporiqa-widget-options="([^"]*)"/', $html, $match));
+        $options = json_decode(html_entity_decode($match[1], \ENT_QUOTES), true);
+        $this->assertSame($loggedIn, $options['loggedIn']);
     }
 
     private function assertNoStore(?string $cacheControl): void

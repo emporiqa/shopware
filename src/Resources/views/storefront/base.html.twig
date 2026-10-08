@@ -9,7 +9,7 @@
             currency: emporiqaConfig.currency|default('EUR'),
             widgetBaseUrl: emporiqaConfig.widgetBaseUrl|default('https://emporiqa.com'),
             userTokenUrl: emporiqaConfig.userTokenUrl|default('/emporiqa/api/user-token'),
-            loggedIn: context.customer is not null,
+            loggedIn: context.customer is not null and not context.customer.guest,
         } %}
         {% set emporiqaCartOptions = {
             cartApiUrl: emporiqaConfig.cartApiUrl|default('/emporiqa/api/cart'),

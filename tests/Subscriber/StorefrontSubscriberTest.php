@@ -109,6 +109,30 @@ class StorefrontSubscriberTest extends TestCase
         $this->subscriber->onStorefrontRender($event);
     }
 
+    /**
+     * The widget script is loaded from this origin on every storefront page:
+     * an http Webhook URL never makes it load over plain http.
+     */
+    public function testTheWidgetIsNeverLoadedOverHttp(): void
+    {
+        $this->config->method('isConfigured')->willReturn(true);
+        $this->config->method('getStoreId')->willReturn('store-abc');
+        $this->config->method('getWebhookSecret')->willReturn('secret-xyz');
+        $this->config->method('getWebhookUrl')->willReturn('http://test.emporiqa.com/webhooks/sync/');
+        $this->channelResolver->method('resolveChannelKey')->willReturn('');
+
+        $request = new Request();
+        $request->setLocale('en_GB');
+
+        $event = $this->createMock(StorefrontRenderEvent::class);
+        $event->method('getSalesChannelContext')->willReturn($this->createSalesChannelContext('channel-1'));
+        $event->method('getRequest')->willReturn($request);
+        $event->expects($this->once())->method('setParameter')
+            ->with('emporiqaConfig', $this->callback(fn (array $config) => $config['widgetBaseUrl'] === 'https://emporiqa.com'));
+
+        $this->subscriber->onStorefrontRender($event);
+    }
+
     public function testOnStorefrontRenderSetsFullLocaleCode(): void
     {
         $this->config->method('isConfigured')->willReturn(true);

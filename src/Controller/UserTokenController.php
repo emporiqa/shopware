@@ -41,7 +41,10 @@ class UserTokenController extends StorefrontController
         $secret = $this->config->getWebhookSecret($context->getSalesChannelId());
         $storeId = $this->config->getStoreId($context->getSalesChannelId());
 
-        if ($customer === null || $secret === '' || $storeId === '') {
+        // A guest checkout keeps its customer record in the session, but a
+        // guest is not signed in: no token, so Emporiqa never treats them as
+        // a customer whose orders an id alone proves.
+        if ($customer === null || $customer->getGuest() || $secret === '' || $storeId === '') {
             return new JsonResponse(['token' => null], Response::HTTP_OK, self::HEADERS);
         }
 

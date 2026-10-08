@@ -80,6 +80,31 @@ class ConfigServiceTest extends TestCase
         $this->assertSame('https://emporiqa.com/webhooks/sync/', $this->configService->getWebhookUrl());
     }
 
+    /**
+     * Shopware's own settings form saves the Webhook URL without the plugin's
+     * https check, so the read refuses anything else: connect and every
+     * webhook carry the secret or a signature over this address.
+     *
+     * @return iterable<string, array{0: string, 1: string}>
+     */
+    public static function webhookUrls(): iterable
+    {
+        yield 'plain http' => ['http://emporiqa.com/webhooks/sync/', 'https://emporiqa.com/webhooks/sync/'];
+        yield 'no scheme' => ['emporiqa.com/webhooks/sync/', 'https://emporiqa.com/webhooks/sync/'];
+        yield 'other scheme' => ['ftp://emporiqa.com/webhooks/sync/', 'https://emporiqa.com/webhooks/sync/'];
+        yield 'https without host' => ['https:///webhooks/sync/', 'https://emporiqa.com/webhooks/sync/'];
+        yield 'upper-case https is kept' => ['HTTPS://test.emporiqa.com/webhooks/sync/', 'HTTPS://test.emporiqa.com/webhooks/sync/'];
+        yield 'https with a port is kept' => ['https://test.emporiqa.com:8443/webhooks/sync/', 'https://test.emporiqa.com:8443/webhooks/sync/'];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('webhookUrls')]
+    public function testGetWebhookUrlOnlyEverReturnsHttps(string $stored, string $expected): void
+    {
+        $this->systemConfig->method('get')->with('EmporiqaIntegration.config.webhookUrl', null)->willReturn($stored);
+
+        $this->assertSame($expected, $this->configService->getWebhookUrl());
+    }
+
     public function testGetWebhookSecret(): void
     {
         $this->systemConfig

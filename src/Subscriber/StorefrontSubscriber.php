@@ -63,10 +63,10 @@ class StorefrontSubscriber implements EventSubscriberInterface
         // Derive widget URL from webhook URL
         $webhookUrl = $this->config->getWebhookUrl($salesChannelId);
         $parsedUrl = parse_url($webhookUrl);
-        if (!\is_array($parsedUrl) || !isset($parsedUrl['host'])) {
-            $parsedUrl = ['scheme' => 'https', 'host' => 'emporiqa.com'];
+        if (!\is_array($parsedUrl) || !isset($parsedUrl['host']) || strtolower($parsedUrl['scheme'] ?? '') !== 'https') {
+            $parsedUrl = ['host' => 'emporiqa.com'];
         }
-        $widgetBaseUrl = ($parsedUrl['scheme'] ?? 'https') . '://' . $parsedUrl['host'];
+        $widgetBaseUrl = 'https://' . $parsedUrl['host'];
 
         $widgetChannel = $this->channelResolver->resolveChannelKey($salesChannelId);
 

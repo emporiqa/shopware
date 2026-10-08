@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.3 (2026-10-08)
+
+### Sicherheit
+- **Gespeicherte Bestellantworten werden nach 10 Minuten gelöscht.** Damit ein wiederholter Aufruf ohne zweite Abfrage beantwortet wird, speichert das Plugin jede Antwort 10 Minuten lang, und eine Antwort kann Name, Adressen, Telefonnummer oder E-Mail-Adresse eines Kunden enthalten. Alte Antworten wurden nur beim nächsten Aufruf gelöscht, in einem ruhigen Shop konnten sie also tagelang in der Datenbank bleiben. Jetzt löscht sie außerdem die geplante Aufgabe des Plugins alle 15 Minuten (sie läuft mit den geplanten Aufgaben von Shopware), zusammen mit den abgelaufenen Zählern der Aufrufbegrenzung.
+- **Die alte Bestellverfolgung findet nur Bestellungen des anfragenden Shops.** In einem Shop, dessen Verkaufskanäle mit verschiedenen Emporiqa-Shops verbunden sind, suchte sie eine Bestellnummer im ganzen Shop. Jetzt sucht sie nur im Verkaufskanal, über den die Anfrage kam, und in den anderen synchronisierten Verkaufskanälen desselben Emporiqa-Shops, die neueste Bestellung zuerst, und beantwortet die Bestellung, deren E-Mail-Adresse passt, wenn mehrere Bestellungen dieselbe Nummer haben. Außerdem ist sie begrenzt wie „Order status“ (10 Abfragen pro Bestellnummer und pro E-Mail-Adresse und 300 pro Shop alle 10 Minuten, beantwortet mit 429 und Retry-After), und eine signierte Anfrage wird nur einmal angenommen, sodass eine kopierte Anfrage nicht noch einmal gesendet werden kann.
+- **Ein Gastkauf gilt nicht mehr als angemeldet.** Nach einem Gastkauf behält Shopware den Gast in der Sitzung, und dem Chat wurde gesagt, der Kunde sei angemeldet. Das Kundentoken wird jetzt nur für ein echtes Kundenkonto ausgestellt, ein Gast wird also wie jeder andere Gast nach der E-Mail-Adresse der Bestellung gefragt.
+- **Die Emporiqa-Adresse ist immer https.** Eine Webhook-URL, die mit etwas anderem beginnt (ein Tippfehler oder ein Wert aus dem Einstellungsformular von Shopware), wird ignoriert und stattdessen `https://emporiqa.com/webhooks/sync/` verwendet, sodass Verbinden, Synchronisieren und das Chat-Widget nie über unverschlüsseltes http laufen.
+
+### Geändert
+- **Die alte Bestellverfolgung ist bei einer Neuinstallation ausgeschaltet.** Die Regel „Order status“ von Emporiqa ersetzt sie, und neuen Shops wird sie nicht angeboten. Ein Shop, der aktualisiert, behält seine Einstellung, sodass eine Bestellverfolgung, die heute funktioniert, weiter funktioniert.
+- **Die Karte „Verbindung“ zeigt die Adresse der alten Bestellverfolgung nur, solange die alte Bestellverfolgung eingeschaltet ist.** Solange Emporiqa noch keine fertigen Regeln anbot (nach dem Verbinden oder einem Verbindungstest), zeigte die Karte die Adresse mit dem Hinweis, sie in das Emporiqa-Dashboard zu kopieren, auch wenn die alte Bestellverfolgung ausgeschaltet war. Wer sie kopierte, erhielt bei jeder Abfrage „Order tracking is disabled“.
+
 ## 1.3.2 (2026-10-07)
 
 ### Hinzugefügt

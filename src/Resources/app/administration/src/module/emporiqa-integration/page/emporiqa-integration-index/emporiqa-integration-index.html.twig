@@ -167,8 +167,9 @@
                         :helpText="$t('emporiqa-integration.settings.connection.webhookSecretHelp')"
                     />
 
-                    {# Order tracking keeps its place until Emporiqa offers ready-made rules #}
-                    <template v-if="!rulesAvailable">
+                    {# Order tracking keeps its place until Emporiqa offers ready-made rules,
+                       and only while it is on: a new install stores it off #}
+                    <template v-if="!rulesAvailable && settings.orderTracking">
                         <div class="emporiqa-integration-index__url-field">
                             <sw-text-field
                                 :value="orderTrackingUrl"

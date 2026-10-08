@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Emporiqa\ShopwarePlugin\Tests\Controller;
 
 use Emporiqa\ShopwarePlugin\Controller\OrderTrackingController;
+use Doctrine\DBAL\Connection;
 use Emporiqa\ShopwarePlugin\Event\OrderTrackingResponseEvent;
+use Emporiqa\ShopwarePlugin\Service\ActionGuard;
+use Emporiqa\ShopwarePlugin\Service\ChannelResolverInterface;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\WebhookClient;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -18,7 +21,10 @@ use Shopware\Core\Checkout\Order\OrderEntity;
 use Shopware\Core\Checkout\Shipping\ShippingMethodEntity;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Defaults;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsAnyFilter;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -34,6 +40,12 @@ class OrderTrackingControllerTest extends TestCase
     private EventDispatcherInterface&MockObject $eventDispatcher;
     private OrderTrackingController $controller;
 
+    /** @var array<string, int> rate-limit bucket hash => hits */
+    private array $hits = [];
+
+    /** @var array<string, true> claimed legacy body hashes */
+    private array $claimed = [];
+
     protected function setUp(): void
     {
         $this->config = $this->createMock(ConfigServiceInterface::class);
@@ -44,6 +56,8 @@ class OrderTrackingControllerTest extends TestCase
             $this->config,
             $this->orderRepository,
             $this->eventDispatcher,
+            new ActionGuard($this->guardConnection()),
+            $this->createMock(ChannelResolverInterface::class),
         );
     }
 
@@ -251,6 +265,7 @@ class OrderTrackingControllerTest extends TestCase
         $request->headers->set('X-Emporiqa-Signature', $signature);
 
         $order = $this->createMock(OrderEntity::class);
+        $order->method('getId')->willReturn('order-1');
         $searchResult = $this->createMock(EntitySearchResult::class);
         $searchResult->method('first')->willReturn($order);
         $searchResult->method('getEntities')->willReturn(self::entityCollection($order));
@@ -311,6 +326,7 @@ class OrderTrackingControllerTest extends TestCase
         $orderCustomer->method('getEmail')->willReturn('john@example.com');
 
         $order = $this->createMock(OrderEntity::class);
+        $order->method('getId')->willReturn('order-1');
         $order->method('getOrderCustomer')->willReturn($orderCustomer);
         $order->method('getOrderNumber')->willReturn('10001');
         $order->method('getOrderDateTime')->willReturn(new \DateTimeImmutable());
@@ -349,6 +365,7 @@ class OrderTrackingControllerTest extends TestCase
         $orderCustomer->method('getEmail')->willReturn('jane@shop.de');
 
         $order = $this->createMock(OrderEntity::class);
+        $order->method('getId')->willReturn('order-1');
         $order->method('getOrderCustomer')->willReturn($orderCustomer);
         $order->method('getOrderNumber')->willReturn('10002');
         $order->method('getOrderDateTime')->willReturn(new \DateTimeImmutable());
@@ -387,6 +404,7 @@ class OrderTrackingControllerTest extends TestCase
         $orderCustomer->method('getEmail')->willReturn('correct@email.com');
 
         $order = $this->createMock(OrderEntity::class);
+        $order->method('getId')->willReturn('order-1');
         $order->method('getOrderCustomer')->willReturn($orderCustomer);
 
         $searchResult = $this->createMock(EntitySearchResult::class);
@@ -424,6 +442,7 @@ class OrderTrackingControllerTest extends TestCase
         $orderCustomer->method('getEmail')->willReturn('user@example.com');
 
         $order = $this->createMock(OrderEntity::class);
+        $order->method('getId')->willReturn('order-1');
         $order->method('getOrderCustomer')->willReturn($orderCustomer);
         $order->method('getOrderNumber')->willReturn('10004');
         $order->method('getOrderDateTime')->willReturn(new \DateTimeImmutable());
@@ -467,6 +486,7 @@ class OrderTrackingControllerTest extends TestCase
         $deliveries = new OrderDeliveryCollection([$delivery]);
 
         $order = $this->createMock(OrderEntity::class);
+        $order->method('getId')->willReturn('order-1');
         $order->method('getOrderNumber')->willReturn('10006');
         $order->method('getOrderDateTime')->willReturn(new \DateTimeImmutable());
         $order->method('getAmountTotal')->willReturn(10.0);
@@ -500,6 +520,7 @@ class OrderTrackingControllerTest extends TestCase
         $request->headers->set('X-Emporiqa-Signature', $signature);
 
         $order = $this->createMock(OrderEntity::class);
+        $order->method('getId')->willReturn('order-1');
         $order->method('getOrderNumber')->willReturn('10007');
         $order->method('getOrderDateTime')->willReturn(new \DateTimeImmutable());
         $order->method('getAmountTotal')->willReturn(10.0);
@@ -544,6 +565,7 @@ class OrderTrackingControllerTest extends TestCase
         $delivery->method('getTrackingCodes')->willReturn([]);
 
         $order = $this->createMock(OrderEntity::class);
+        $order->method('getId')->willReturn('order-1');
         $order->method('getOrderNumber')->willReturn('10008');
         $order->method('getOrderDateTime')->willReturn(new \DateTimeImmutable());
         $order->method('getAmountTotal')->willReturn(10.0);
@@ -588,6 +610,7 @@ class OrderTrackingControllerTest extends TestCase
         $delivery->method('getTrackingCodes')->willReturn(['ABC123456']);
 
         $order = $this->createMock(OrderEntity::class);
+        $order->method('getId')->willReturn('order-1');
         $order->method('getOrderNumber')->willReturn('10011');
         $order->method('getOrderDateTime')->willReturn(new \DateTimeImmutable());
         $order->method('getAmountTotal')->willReturn(10.0);
@@ -628,6 +651,7 @@ class OrderTrackingControllerTest extends TestCase
         $delivery->method('getTrackingCodes')->willReturn(['ABC123456']);
 
         $order = $this->createMock(OrderEntity::class);
+        $order->method('getId')->willReturn('order-1');
         $order->method('getOrderNumber')->willReturn('10012');
         $order->method('getOrderDateTime')->willReturn(new \DateTimeImmutable());
         $order->method('getAmountTotal')->willReturn(10.0);
@@ -667,6 +691,7 @@ class OrderTrackingControllerTest extends TestCase
         $orderLanguageId = 'order-specific-language-id';
 
         $initialOrder = $this->createMock(OrderEntity::class);
+        $initialOrder->method('getId')->willReturn('order-1');
         $initialOrder->method('getOrderNumber')->willReturn('10009');
         $initialOrder->method('getLanguageId')->willReturn($orderLanguageId);
 
@@ -712,6 +737,7 @@ class OrderTrackingControllerTest extends TestCase
         $request->headers->set('X-Emporiqa-Signature', $signature);
 
         $order = $this->createMock(OrderEntity::class);
+        $order->method('getId')->willReturn('order-1');
         $order->method('getOrderNumber')->willReturn('10010');
         $order->method('getOrderDateTime')->willReturn(new \DateTimeImmutable());
         $order->method('getAmountTotal')->willReturn(5.0);
@@ -737,6 +763,176 @@ class OrderTrackingControllerTest extends TestCase
         $data = json_decode($response->getContent(), true);
 
         $this->assertSame('injected-value', $data['injected_field']);
+    }
+
+    /**
+     * Legacy requests carry no request_id: a captured signed body sent again
+     * within its 5-minute timestamp window is refused before any lookup.
+     */
+    public function testTheSameSignedBodyIsAnsweredOnlyOnce(): void
+    {
+        $context = $this->createSalesChannelContext('channel-replay');
+        $this->config->method('isOrderTrackingEnabled')->willReturn(true);
+        $this->config->method('getWebhookSecret')->willReturn('replay-secret');
+        $this->config->method('getStoreId')->willReturn('st_1');
+        $this->config->method('isOrderRequireEmail')->willReturn(true);
+        $this->orderRepository->method('search')->willReturn($this->searchResult($this->order('1042', 'shopper@example.com')));
+
+        $request = $this->signedRequest('1042', 'shopper@example.com', 'replay-secret');
+        $first = $this->controller->tracking($request, $context);
+        $again = $this->controller->tracking(clone $request, $context);
+
+        $this->assertSame(Response::HTTP_OK, $first->getStatusCode());
+        $this->assertSame(Response::HTTP_UNAUTHORIZED, $again->getStatusCode());
+        $this->assertSame('Request expired', json_decode((string) $again->getContent(), true)['error']);
+    }
+
+    /**
+     * The same limits as Order status: the 11th lookup of one order number in
+     * a 10-minute window is refused with 429 and Retry-After, without a lookup.
+     */
+    public function testLookupsOfOneOrderNumberAreRateLimited(): void
+    {
+        $context = $this->createSalesChannelContext('channel-limit');
+        $this->config->method('isOrderTrackingEnabled')->willReturn(true);
+        $this->config->method('getWebhookSecret')->willReturn('limit-secret');
+        $this->config->method('getStoreId')->willReturn('st_1');
+        $this->config->method('isOrderRequireEmail')->willReturn(true);
+        $this->orderRepository->expects($this->exactly(ActionGuard::RATE_PER_VALUE))->method('search')
+            ->willReturn($this->searchResult());
+
+        for ($i = 0; $i < ActionGuard::RATE_PER_VALUE; ++$i) {
+            $response = $this->controller->tracking($this->signedRequest('1042', 'guess' . $i . '@example.com', 'limit-secret'), $context);
+            $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
+        }
+        $limited = $this->controller->tracking($this->signedRequest('1042', 'guess-last@example.com', 'limit-secret'), $context);
+
+        $this->assertSame(Response::HTTP_TOO_MANY_REQUESTS, $limited->getStatusCode());
+        $this->assertGreaterThan(0, (int) $limited->headers->get('Retry-After'));
+    }
+
+    /**
+     * One shop, two Emporiqa stores: a lookup signed for store st_1 only
+     * searches the request's own channel and the other synced channels of
+     * st_1, never a channel connected to another store.
+     */
+    public function testLookupOnlySearchesTheSigningStoresSalesChannels(): void
+    {
+        $context = $this->createSalesChannelContext('channel-a');
+        $this->config->method('isOrderTrackingEnabled')->willReturn(true);
+        $this->config->method('getWebhookSecret')->willReturn('scope-secret');
+        $this->config->method('isOrderRequireEmail')->willReturn(true);
+        $this->config->method('getEnabledSalesChannels')->willReturn(['channel-a', 'channel-a2', 'channel-b']);
+        $this->config->method('getStoreId')->willReturnCallback(fn (?string $id) => $id === 'channel-b' ? 'st_2' : 'st_1');
+
+        $searched = [];
+        $this->orderRepository->method('search')->willReturnCallback(function (Criteria $criteria) use (&$searched) {
+            foreach ($criteria->getFilters() as $filter) {
+                if ($filter instanceof EqualsAnyFilter && $filter->getField() === 'salesChannelId') {
+                    $searched = $filter->getValue();
+                }
+            }
+
+            return $this->searchResult();
+        });
+
+        $this->controller->tracking($this->signedRequest('1042', 'shopper@example.com', 'scope-secret'), $context);
+
+        $this->assertEqualsCanonicalizing(['channel-a', 'channel-a2'], $searched);
+    }
+
+    /**
+     * Number ranges can be per sales channel, so one number may match several
+     * orders: the newest one whose email matches is answered, not whichever
+     * row the database returns first.
+     */
+    public function testTheCandidateWhoseEmailMatchesIsAnswered(): void
+    {
+        $context = $this->createSalesChannelContext('channel-candidates');
+        $this->config->method('isOrderTrackingEnabled')->willReturn(true);
+        $this->config->method('getWebhookSecret')->willReturn('candidate-secret');
+        $this->config->method('getStoreId')->willReturn('st_1');
+        $this->config->method('isOrderRequireEmail')->willReturn(true);
+
+        $other = $this->order('1042', 'someone.else@example.com', 'order-other');
+        $own = $this->order('1042', 'shopper@example.com', 'order-own');
+        $fetchedId = null;
+        $this->orderRepository->method('search')->willReturnCallback(function (Criteria $criteria) use ($other, $own, &$fetchedId) {
+            if ($criteria->getIds() !== []) {
+                $fetchedId = $criteria->getIds()[0];
+
+                return $this->searchResult($own);
+            }
+            $this->assertSame('orderDateTime', $criteria->getSorting()[0]->getField());
+
+            return $this->searchResult($other, $own);
+        });
+
+        $response = $this->controller->tracking($this->signedRequest('1042', 'shopper@example.com', 'candidate-secret'), $context);
+
+        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+        $this->assertSame('order-own', $fetchedId);
+    }
+
+    private function signedRequest(string $orderNumber, string $email, string $secret): Request
+    {
+        $body = (string) json_encode([
+            'order_identifier' => $orderNumber,
+            'timestamp' => time(),
+            'verification_fields' => ['email' => $email],
+        ]);
+        $request = new Request([], [], [], [], [], [], $body);
+        $request->headers->set('X-Emporiqa-Signature', WebhookClient::generateSignature($body, $secret));
+
+        return $request;
+    }
+
+    private function order(string $orderNumber, string $email, string $id = 'order-1'): OrderEntity&MockObject
+    {
+        $orderCustomer = $this->createMock(OrderCustomerEntity::class);
+        $orderCustomer->method('getEmail')->willReturn($email);
+
+        $order = $this->createMock(OrderEntity::class);
+        $order->method('getId')->willReturn($id);
+        $order->method('getOrderCustomer')->willReturn($orderCustomer);
+        $order->method('getOrderNumber')->willReturn($orderNumber);
+        $order->method('getOrderDateTime')->willReturn(new \DateTimeImmutable());
+        $order->method('getLanguageId')->willReturn(Defaults::LANGUAGE_SYSTEM);
+
+        return $order;
+    }
+
+    private function searchResult(OrderEntity ...$orders): EntitySearchResult&MockObject
+    {
+        $result = $this->createMock(EntitySearchResult::class);
+        $result->method('first')->willReturn($orders[0] ?? null);
+        $result->method('getEntities')->willReturn(self::entityCollection(...$orders));
+
+        return $result;
+    }
+
+    /**
+     * ActionGuard's tables in memory: replay claims and rate-limit counters.
+     */
+    private function guardConnection(): Connection&MockObject
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('executeStatement')->willReturnCallback(function (string $sql, array $params = []) {
+            if (str_starts_with($sql, 'INSERT IGNORE INTO `emporiqa_action_request`')) {
+                if (isset($this->claimed[$params['hash']])) {
+                    return 0;
+                }
+                $this->claimed[$params['hash']] = true;
+            }
+            if (str_starts_with($sql, 'INSERT INTO `emporiqa_action_rate`')) {
+                $this->hits[$params['hash']] = ($this->hits[$params['hash']] ?? 0) + 1;
+            }
+
+            return 1;
+        });
+        $connection->method('fetchOne')->willReturnCallback(fn (string $sql, array $params) => $this->hits[$params['hash']] ?? false);
+
+        return $connection;
     }
 
     /**

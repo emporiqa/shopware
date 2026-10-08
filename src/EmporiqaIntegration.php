@@ -7,12 +7,13 @@ namespace Emporiqa\ShopwarePlugin;
 use Doctrine\DBAL\Connection;
 use Emporiqa\ShopwarePlugin\Subscriber\UpgradeResyncSubscriber;
 use Shopware\Core\Framework\Plugin;
+use Shopware\Core\Framework\Plugin\Context\InstallContext;
 use Shopware\Core\Framework\Plugin\Context\UninstallContext;
 use Shopware\Core\Framework\Plugin\Context\UpdateContext;
 
 class EmporiqaIntegration extends Plugin
 {
-    public const PLUGIN_VERSION = '1.3.2';
+    public const PLUGIN_VERSION = '1.3.3';
 
     /**
      * Before 1.2.4, tier prices from customer-group rules were synced as public
@@ -26,6 +27,37 @@ class EmporiqaIntegration extends Plugin
 
     /** Before 1.3.2, a home page with no text was synced as an empty page. */
     private const FIRST_VERSION_WITHOUT_EMPTY_HOME_PAGE = '1.3.2';
+
+    private const ORDER_TRACKING_KEY = 'EmporiqaIntegration.config.orderTracking';
+
+    private const STORE_ID_KEY = 'EmporiqaIntegration.config.storeId';
+
+    private const WEBHOOK_SECRET_KEY = 'EmporiqaIntegration.config.webhookSecret';
+
+    /**
+     * The old order tracking is kept for stores that already use it and is
+     * not offered to new ones (Emporiqa's Order status rule replaces it), so
+     * a new install stores it switched off. Nothing stored keeps meaning on
+     * (ConfigService::isOrderTrackingEnabled), which is what an update from
+     * before 1.3.0 and a reinstall that kept its data and connection see.
+     */
+    public function install(InstallContext $installContext): void
+    {
+        parent::install($installContext);
+
+        try {
+            $systemConfig = $this->container->get('Shopware\Core\System\SystemConfig\SystemConfigService');
+            if (
+                $systemConfig->get(self::ORDER_TRACKING_KEY) === null
+                && (string) $systemConfig->get(self::STORE_ID_KEY) === ''
+                && (string) $systemConfig->get(self::WEBHOOK_SECRET_KEY) === ''
+            ) {
+                $systemConfig->set(self::ORDER_TRACKING_KEY, false);
+            }
+        } catch (\Throwable $e) {
+            // Never fail the install; the switch is under Advanced.
+        }
+    }
 
     public function postUpdate(UpdateContext $updateContext): void
     {

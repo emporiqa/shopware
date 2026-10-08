@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.3 (2026-10-08)
+
+### Security
+- **Order answers the chat saved are deleted after 10 minutes.** To answer a repeated call without a second lookup, the plugin keeps each answer for 10 minutes, and an answer can hold a customer's name, addresses, phone or email. Old answers were only deleted when the next call came in, so on a quiet shop they could stay in the database for days. They are now also deleted by the plugin's scheduled task every 15 minutes (it runs with Shopware's scheduled tasks), and with them the expired rate limit counters.
+- **The old order tracking only finds orders of the store that asked.** In a shop where sales channels are connected to different Emporiqa stores, it looked an order number up across the whole shop. It now only searches the sales channel the request came in on and the other synced sales channels of the same Emporiqa store, newest order first, and answers the order whose email matches when several orders share a number. It is also rate limited like Order status (10 lookups per order number and per email and 300 per store every 10 minutes, answered with 429 and Retry-After), and a signed request is accepted only once, so a copied request cannot be sent again.
+- **A guest checkout no longer counts as signed in.** After a guest checkout Shopware keeps the guest in the session, and the chat was told the shopper was signed in. The customer token is now only issued for a real customer account, so a guest is asked for the order email like any other guest.
+- **The Emporiqa address is always https.** A Webhook URL starting with anything else (a typo, or a value saved in Shopware's own settings form) is ignored and `https://emporiqa.com/webhooks/sync/` is used instead, so connecting, syncing and the chat widget never go over plain http.
+
+### Changed
+- **The old order tracking is off on a new install.** Emporiqa's Order status rule replaces it and new stores are not offered it. A shop that updates keeps its setting, so order tracking that works today keeps working.
+- **The Connection card shows the old order-tracking address only while old order tracking is on.** Until Emporiqa offered ready-made rules (after connecting or a Test connection), the card showed the address with "Copy this URL into your Emporiqa dashboard" even when old order tracking was off, so a merchant who copied it got "Order tracking is disabled" on every lookup.
+
 ## 1.3.2 (2026-10-07)
 
 ### Added

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Emporiqa\ShopwarePlugin\Controller;
 
 use Emporiqa\ShopwarePlugin\Event\OrderTrackingResponseEvent;
+use Emporiqa\ShopwarePlugin\Service\ActionGuard;
+use Emporiqa\ShopwarePlugin\Service\ChannelResolverInterface;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\WebhookClient;
 use Psr\Log\LoggerInterface;
@@ -14,7 +16,9 @@ use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsAnyFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Storefront\Controller\StorefrontController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -35,6 +39,8 @@ class OrderTrackingController extends StorefrontController
         private readonly ConfigServiceInterface $config,
         private readonly EntityRepository $orderRepository,
         private readonly EventDispatcherInterface $eventDispatcher,
+        private readonly ActionGuard $guard,
+        private readonly ChannelResolverInterface $channelResolver,
         private readonly ?LoggerInterface $logger = null,
     ) {
     }
@@ -98,10 +104,27 @@ class OrderTrackingController extends StorefrontController
             return $this->orderNotFoundResponse();
         }
 
-        $order = $this->findOrder($orderIdentifier, $context->getContext());
+        $verificationFields = \is_array($data['verification_fields'] ?? null) ? $data['verification_fields'] : [];
+        $providedEmail = \is_string($verificationFields['email'] ?? null) ? $verificationFields['email'] : '';
 
-        if (!$order instanceof OrderEntity) {
-            return $this->orderNotFoundResponse();
+        // The store that signed: the channel's own store id, or the channel
+        // itself on an install that only ever set a secret.
+        $salesChannelId = $context->getSalesChannelId();
+        $storeId = $this->config->getStoreId($salesChannelId);
+        $storeKey = $storeId !== '' ? $storeId : 'channel:' . $salesChannelId;
+
+        if (!$this->guard->claimLegacyBody($storeKey, $rawBody)) {
+            return new JsonResponse(['error' => 'Request expired'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        // The same limits as Order status, counted in the same buckets.
+        $limited = $this->guard->rateLimitHit($storeKey, $orderIdentifier, $providedEmail);
+        if ($limited !== null) {
+            return new JsonResponse(
+                ['error' => 'Too many requests'],
+                Response::HTTP_TOO_MANY_REQUESTS,
+                ['Retry-After' => (string) $limited['retry_after']],
+            );
         }
 
         // Email verification: required when config says so, or when provided.
@@ -109,14 +132,21 @@ class OrderTrackingController extends StorefrontController
         // not being found at all, this deliberately makes the two
         // indistinguishable so an anonymous caller cannot use verification
         // failures to probe which order numbers exist (PS parity).
-        $verificationFields = \is_array($data['verification_fields'] ?? null) ? $data['verification_fields'] : [];
-        $requireEmail = $this->config->isOrderRequireEmail($context->getSalesChannelId());
-        $providedEmail = \is_string($verificationFields['email'] ?? null) ? $verificationFields['email'] : '';
+        $requireEmail = $this->config->isOrderRequireEmail($salesChannelId);
+        $checkEmail = $requireEmail || $providedEmail !== '';
+        if ($checkEmail && $providedEmail === '') {
+            return $this->orderNotFoundResponse();
+        }
 
-        if ($requireEmail || $providedEmail !== '') {
-            if ($providedEmail === '' || !$this->emailMatchesOrder($order, $providedEmail)) {
-                return $this->orderNotFoundResponse();
-            }
+        $order = $this->findOrder(
+            $orderIdentifier,
+            $checkEmail ? $providedEmail : null,
+            $this->salesChannelsOfStore($salesChannelId, $storeId),
+            $context->getContext(),
+        );
+
+        if (!$order instanceof OrderEntity) {
+            return $this->orderNotFoundResponse();
         }
 
         $data = $this->formatOrderTracking($order);
@@ -128,17 +158,43 @@ class OrderTrackingController extends StorefrontController
     }
 
     /**
-     * Looks up the order by number in two steps: a slim, association-free
-     * query to learn its language, then a single full-association fetch
-     * using a language-aware context (the order's own language chain when
-     * it differs from the requesting context, else the requesting context
-     * unchanged). This replaces the old pattern of an eager full fetch
-     * followed by an identical full re-fetch in localizeOrder() whenever
-     * the language differed, the first full result was simply discarded.
+     * The sales channels whose orders this store may read: the request's own
+     * channel and the synced channels of the same Emporiqa store, so one shop
+     * running several stores never answers one store with another's order.
+     *
+     * @return list<string>
      */
-    private function findOrder(string $orderIdentifier, Context $context): ?OrderEntity
+    private function salesChannelsOfStore(string $salesChannelId, string $storeId): array
     {
-        $slimOrder = $this->findOrderSlim($orderIdentifier, $context);
+        $ids = [$salesChannelId => true];
+        if ($storeId !== '') {
+            $synced = $this->config->getEnabledSalesChannels();
+            if ($synced === []) {
+                $synced = array_map('strval', array_keys($this->channelResolver->getMapping()));
+            }
+            foreach ($synced as $id) {
+                if ($this->config->getStoreId($id) === $storeId) {
+                    $ids[$id] = true;
+                }
+            }
+        }
+
+        return array_keys($ids);
+    }
+
+    /**
+     * Looks up the order by number in two steps: a slim query for the
+     * candidates (number ranges can be per sales channel, so one number may
+     * match several orders), newest first, picking the first whose email
+     * matches; then a single full-association fetch of that order using a
+     * language-aware context (the order's own language chain when it differs
+     * from the requesting context, else the requesting context unchanged).
+     *
+     * @param list<string> $salesChannelIds
+     */
+    private function findOrder(string $orderIdentifier, ?string $email, array $salesChannelIds, Context $context): ?OrderEntity
+    {
+        $slimOrder = $this->findOrderSlim($orderIdentifier, $email, $salesChannelIds, $context);
         if ($slimOrder === null) {
             return null;
         }
@@ -152,24 +208,38 @@ class OrderTrackingController extends StorefrontController
             );
         }
 
-        return $this->findOrderFull($orderIdentifier, $fetchContext);
+        return $this->findOrderFull($slimOrder->getId(), $fetchContext);
     }
 
-    private function findOrderSlim(string $orderIdentifier, Context $context): ?OrderEntity
+    /**
+     * @param list<string> $salesChannelIds
+     */
+    private function findOrderSlim(string $orderIdentifier, ?string $email, array $salesChannelIds, Context $context): ?OrderEntity
     {
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('orderNumber', $orderIdentifier));
-        $criteria->setLimit(1);
+        $criteria->addFilter(new EqualsAnyFilter('salesChannelId', $salesChannelIds));
+        $criteria->addAssociation('orderCustomer');
+        $criteria->addSorting(new FieldSorting('orderDateTime', FieldSorting::DESCENDING));
+        $criteria->setLimit(10);
 
-        $order = $this->orderRepository->search($criteria, $context)->getEntities()->first();
+        $candidates = $this->orderRepository->search($criteria, $context)->getEntities();
+        foreach ($candidates as $candidate) {
+            if ($email === null || $this->emailMatchesOrder($candidate, $email)) {
+                return $candidate;
+            }
+        }
 
-        return $order instanceof OrderEntity ? $order : null;
+        return null;
     }
 
-    private function findOrderFull(string $orderIdentifier, Context $context): ?OrderEntity
+    private function findOrderFull(string $orderId, Context $context): ?OrderEntity
     {
-        $criteria = new Criteria();
-        $criteria->addFilter(new EqualsFilter('orderNumber', $orderIdentifier));
+        if ($orderId === '') {
+            return null;
+        }
+
+        $criteria = new Criteria([$orderId]);
         $criteria->addAssociation('orderCustomer');
         $criteria->addAssociation('lineItems');
         $criteria->addAssociation('currency');

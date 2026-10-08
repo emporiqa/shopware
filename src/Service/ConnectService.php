@@ -360,17 +360,19 @@ class ConnectService implements ConnectServiceInterface
     }
 
     /**
-     * Emporiqa base URL (scheme + host) derived from the configured webhook URL,
-     * e.g. https://emporiqa.com/webhooks/sync/ -> https://emporiqa.com.
+     * Emporiqa base URL (host, always https) derived from the configured webhook
+     * URL, e.g. https://emporiqa.com/webhooks/sync/ -> https://emporiqa.com. The
+     * exchange receives the webhook secret, so a non-https URL is never used.
      */
     private function baseUrl(): string
     {
         $parts = parse_url($this->config->getWebhookUrl());
-        $scheme = \is_array($parts) ? ($parts['scheme'] ?? 'https') : 'https';
-        $host = \is_array($parts) && !empty($parts['host']) ? $parts['host'] : 'emporiqa.com';
-        $port = \is_array($parts) && isset($parts['port']) ? ':' . $parts['port'] : '';
+        if (!\is_array($parts) || strtolower($parts['scheme'] ?? '') !== 'https' || empty($parts['host'])) {
+            return 'https://emporiqa.com';
+        }
+        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
 
-        return $scheme . '://' . $host . $port;
+        return 'https://' . $parts['host'] . $port;
     }
 
     /**

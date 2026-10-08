@@ -47,7 +47,7 @@ After installing by either method above:
 
 **Customer info.** For a signed-in shopper the plugin also answers Emporiqa's signed customer info call: the name and email of their customer account and their 10 newest orders (number, date, status and total), so the chat answers "where is my order?" with their newest order when they give no number, and fills in their email in your rules. Only the account's own orders in the sales channels synced to your Emporiqa store are included; a guest order placed with the same email is not. Nothing to set up.
 
-The older order tracking keeps working as before. Where ready-made rules are offered it sits under **Advanced** as *Old order tracking (deprecated)*: once Order status is on, remove its address in your Emporiqa dashboard (**Settings > Integration > For your developer > Order tracking API URL**), then switch it off.
+The older order tracking keeps working as before for stores that use it; a new install has it switched off, since the Order status rule replaces it. Where ready-made rules are offered it sits under **Advanced** as *Old order tracking (deprecated)*: once Order status is on, remove its address in your Emporiqa dashboard (**Settings > Integration > For your developer > Order tracking API URL**), then switch it off.
 
 ## Configuration
 
@@ -69,9 +69,9 @@ The recommended path is **Connect to Emporiqa** (one-click handshake, no credent
 |---------|-------------|---------|
 | Sync Products | Enable real-time product sync | On |
 | Sync Pages | Enable real-time CMS page sync | On |
-| Webhook URL | Emporiqa webhook endpoint | `https://emporiqa.com/webhooks/sync/` |
+| Webhook URL | Emporiqa webhook endpoint (must start with `https://`; any other address is ignored and the default is used) | `https://emporiqa.com/webhooks/sync/` |
 | Batch Size | Products/pages per webhook request during bulk sync | 50 |
-| Old order tracking (deprecated) | Shown where ready-made rules are offered; replaced by the Order status rule | On |
+| Old order tracking (deprecated) | Shown where ready-made rules are offered; replaced by the Order status rule | Off on a new install; an update keeps your setting |
 
 The **Sync** tab shows how many products and pages a sync sends: products visible in a synced sales channel, and pages reachable there (a category page only when it has text of its own, the home page only when it has any text).
 

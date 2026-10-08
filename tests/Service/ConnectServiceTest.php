@@ -224,6 +224,26 @@ class ConnectServiceTest extends TestCase
         $this->assertSame('https://myshop.example.com', $sentBody['shop_origin']);
     }
 
+    /**
+     * The exchange sends the PKCE verifier and receives the webhook secret: a
+     * Webhook URL edited to http:// must never make it travel in cleartext.
+     */
+    public function testAnHttpWebhookUrlNeverSendsTheExchangeInCleartext(): void
+    {
+        $this->config = $this->createMock(ConfigServiceInterface::class);
+        $this->config->method('getWebhookUrl')->willReturn('http://emporiqa.com/webhooks/sync/');
+        $this->assertStringStartsWith('https://emporiqa.com/connect/start?', $this->createService()->initiate('https://myshop.example.com'));
+        $pending = $this->getPending();
+
+        $history = [];
+        $client = $this->createClientWithMock([
+            new Response(200, [], (string) json_encode(['store_id' => 'store-42', 'webhook_secret' => 'super-secret'])),
+        ], $history);
+        $this->createService($client)->exchange('one-time-code', $pending['state']);
+
+        $this->assertSame('https://emporiqa.com/connect/exchange', (string) $history[0]['request']->getUri());
+    }
+
     public function testExchangeSendsTheActionsBaseUrlAndKeepsTheRulesStatus(): void
     {
         $this->createService()->initiate('https://myshop.example.com');

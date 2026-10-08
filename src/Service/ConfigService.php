@@ -10,6 +10,8 @@ class ConfigService implements ConfigServiceInterface
 {
     private const CONFIG_PREFIX = 'EmporiqaIntegration.config.';
 
+    private const DEFAULT_WEBHOOK_URL = 'https://emporiqa.com/webhooks/sync/';
+
     public function __construct(
         private readonly SystemConfigService $systemConfig,
     ) {
@@ -20,11 +22,21 @@ class ConfigService implements ConfigServiceInterface
         return (string) $this->systemConfig->get(self::CONFIG_PREFIX . 'storeId', $salesChannelId);
     }
 
+    /**
+     * Connect, webhooks and the widget all derive from this URL, and connect
+     * receives the webhook secret over it, so anything but https (a typo, or
+     * a value saved through Shopware's own settings form, which bypasses the
+     * plugin's check) falls back to Emporiqa's address.
+     */
     public function getWebhookUrl(?string $salesChannelId = null): string
     {
         $url = (string) $this->systemConfig->get(self::CONFIG_PREFIX . 'webhookUrl', $salesChannelId);
+        $parts = $url !== '' ? parse_url($url) : false;
+        if (!\is_array($parts) || strtolower($parts['scheme'] ?? '') !== 'https' || empty($parts['host'])) {
+            return self::DEFAULT_WEBHOOK_URL;
+        }
 
-        return $url ?: 'https://emporiqa.com/webhooks/sync/';
+        return $url;
     }
 
     public function getWebhookSecret(?string $salesChannelId = null): string
@@ -71,8 +83,9 @@ class ConfigService implements ConfigServiceInterface
     }
 
     /**
-     * The old order tracking endpoint. On unless the merchant switched it off
-     * (the setting exists from 1.3.0; nothing stored means on).
+     * The old order tracking endpoint. On unless switched off (the setting
+     * exists from 1.3.0; nothing stored means on, for stores updated from
+     * before it). A new install stores it off (EmporiqaIntegration::install).
      */
     public function isOrderTrackingEnabled(?string $salesChannelId = null): bool
     {

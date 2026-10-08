@@ -119,6 +119,64 @@ class ActionGuardTest extends TestCase
         (new ActionGuard($connection))->remember('st_2', 'req-1', 200, '{}');
     }
 
+    /**
+     * Remembered answers carry names, addresses and emails: none outlives
+     * the 10-minute replay window, and expired counters go with them.
+     */
+    public function testPurgeExpiredDeletesAnswersPastTheReplayWindowAndExpiredCounters(): void
+    {
+        $statements = [];
+        $connection = $this->createMock(Connection::class);
+        $connection->method('executeStatement')->willReturnCallback(function (string $sql, array $params) use (&$statements) {
+            $statements[] = [$sql, $params];
+
+            return 0;
+        });
+
+        (new ActionGuard($connection))->purgeExpired(1_000_000);
+
+        $this->assertCount(2, $statements);
+        $this->assertStringStartsWith('DELETE FROM `emporiqa_action_request` WHERE `created_at` <', $statements[0][0]);
+        $this->assertSame(['since' => 1_000_000 - ActionGuard::DEDUPE_TTL_SECONDS], $statements[0][1]);
+        $this->assertStringStartsWith('DELETE FROM `emporiqa_action_rate` WHERE `expires_at` <=', $statements[1][0]);
+        $this->assertSame(['now' => 1_000_000], $statements[1][1]);
+    }
+
+    /**
+     * Legacy order tracking has no request_id: the same signed body is
+     * answered once, and a second send of it is refused.
+     */
+    public function testALegacyBodyIsClaimedOnlyOnce(): void
+    {
+        $claimed = [];
+        $connection = $this->createMock(Connection::class);
+        $connection->method('executeStatement')->willReturnCallback(function (string $sql, array $params) use (&$claimed) {
+            if (!str_starts_with($sql, 'INSERT IGNORE INTO `emporiqa_action_request`')) {
+                return 0;
+            }
+            if (isset($claimed[$params['hash']])) {
+                return 0;
+            }
+            $claimed[$params['hash']] = true;
+
+            return 1;
+        });
+        $guard = new ActionGuard($connection);
+
+        $this->assertTrue($guard->claimLegacyBody('st_1', '{"order_identifier":"1042","timestamp":1}'));
+        $this->assertFalse($guard->claimLegacyBody('st_1', '{"order_identifier":"1042","timestamp":1}'));
+        $this->assertTrue($guard->claimLegacyBody('st_1', '{"order_identifier":"1042","timestamp":2}'));
+        $this->assertTrue($guard->claimLegacyBody('st_2', '{"order_identifier":"1042","timestamp":1}'));
+    }
+
+    public function testALegacyBodyClaimFailsClosed(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('executeStatement')->willThrowException(new \RuntimeException('table missing'));
+
+        $this->assertFalse((new ActionGuard($connection))->claimLegacyBody('st_1', '{}'));
+    }
+
     public function testAnEmailOnAStoreDomainIsAValueLimitNotTheStoreCeiling(): void
     {
         $guard = new ActionGuard($this->connection);

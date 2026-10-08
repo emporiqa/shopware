@@ -6,6 +6,7 @@ namespace Emporiqa\ShopwarePlugin\ScheduledTask;
 
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
+use Emporiqa\ShopwarePlugin\Service\ActionGuard;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\GuestRuleResolver;
 use Emporiqa\ShopwarePlugin\Service\SyncServiceInterface;
@@ -20,7 +21,9 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 /**
  * Finds the date-range conditions that started or ended since the last run
- * and re-syncs every product with advanced prices on those rules.
+ * and re-syncs every product with advanced prices on those rules. Also the
+ * plugin's one regular job, so it clears the action endpoints' expired
+ * answers and counters (ActionGuard::purgeExpired) on a store with no calls.
  */
 #[AsMessageHandler(handles: PriceRuleBoundaryTask::class)]
 class PriceRuleBoundaryTaskHandler extends ScheduledTaskHandler
@@ -37,6 +40,7 @@ class PriceRuleBoundaryTaskHandler extends ScheduledTaskHandler
         private readonly SystemConfigService $systemConfig,
         private readonly ConfigServiceInterface $config,
         private readonly SyncServiceInterface $syncService,
+        private readonly ActionGuard $actionGuard,
     ) {
         parent::__construct($scheduledTaskRepository, $logger);
     }
@@ -51,6 +55,12 @@ class PriceRuleBoundaryTaskHandler extends ScheduledTaskHandler
      */
     public function runAt(int $now): array
     {
+        try {
+            $this->actionGuard->purgeExpired($now);
+        } catch (\Throwable) {
+            // Cleanup only; the price boundaries below still run.
+        }
+
         $since = $this->systemConfig->getInt(self::CHECKED_AT_KEY);
         $this->systemConfig->set(self::CHECKED_AT_KEY, $now);
         if ($since <= 0) {

@@ -7,6 +7,7 @@ namespace Emporiqa\ShopwarePlugin\Tests\ScheduledTask;
 use Doctrine\DBAL\Connection;
 use Emporiqa\ShopwarePlugin\ScheduledTask\PriceRuleBoundaryTask;
 use Emporiqa\ShopwarePlugin\ScheduledTask\PriceRuleBoundaryTaskHandler;
+use Emporiqa\ShopwarePlugin\Service\ActionGuard;
 use Emporiqa\ShopwarePlugin\Service\ConfigServiceInterface;
 use Emporiqa\ShopwarePlugin\Service\SyncServiceInterface;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -25,6 +26,7 @@ class PriceRuleBoundaryTaskHandlerTest extends TestCase
     private SystemConfigService&MockObject $systemConfig;
     private ConfigServiceInterface&MockObject $config;
     private SyncServiceInterface&MockObject $sync;
+    private ActionGuard&MockObject $guard;
 
     /** @var array<string, mixed> */
     private array $stored = [];
@@ -48,6 +50,7 @@ class PriceRuleBoundaryTaskHandlerTest extends TestCase
         $this->config->method('isConfigured')->willReturn(true);
         $this->config->method('isSyncProductsEnabled')->willReturn(true);
         $this->sync = $this->createMock(SyncServiceInterface::class);
+        $this->guard = $this->createMock(ActionGuard::class);
     }
 
     /**
@@ -99,11 +102,37 @@ class PriceRuleBoundaryTaskHandlerTest extends TestCase
         $config->method('isSyncProductsEnabled')->willReturn(false);
         $this->connection->expects($this->never())->method('fetchAllAssociative');
 
-        (new PriceRuleBoundaryTaskHandler($this->createMock(EntityRepository::class), new NullLogger(), $this->connection, $this->systemConfig, $config, $this->sync))->runAt(self::NOW);
+        (new PriceRuleBoundaryTaskHandler($this->createMock(EntityRepository::class), new NullLogger(), $this->connection, $this->systemConfig, $config, $this->sync, $this->guard))->runAt(self::NOW);
+    }
+
+    /**
+     * Remembered action answers hold names, addresses and emails. On a store
+     * that gets no further action call nothing else would delete them, so
+     * every run clears the expired ones, whether or not anything is synced.
+     */
+    public function testEveryRunClearsExpiredActionAnswers(): void
+    {
+        $config = $this->createMock(ConfigServiceInterface::class);
+        $config->method('isConfigured')->willReturn(false);
+        $this->guard->expects($this->once())->method('purgeExpired')->with(self::NOW);
+
+        (new PriceRuleBoundaryTaskHandler($this->createMock(EntityRepository::class), new NullLogger(), $this->connection, $this->systemConfig, $config, $this->sync, $this->guard))->runAt(self::NOW);
+    }
+
+    public function testAFailedCleanupDoesNotStopTheRun(): void
+    {
+        $this->stored[PriceRuleBoundaryTaskHandler::CHECKED_AT_KEY] = self::NOW - 900;
+        $this->conditions = [
+            ['rule_id' => self::RULE_ENDED, 'value' => json_encode(['fromDate' => null, 'toDate' => date(DATE_ATOM, self::NOW - 60), 'useTime' => true])],
+        ];
+        $this->guard->method('purgeExpired')->willThrowException(new \RuntimeException('table missing'));
+        $this->sync->expects($this->once())->method('resyncProducts');
+
+        $this->handler()->runAt(self::NOW);
     }
 
     private function handler(): PriceRuleBoundaryTaskHandler
     {
-        return new PriceRuleBoundaryTaskHandler($this->createMock(EntityRepository::class), new NullLogger(), $this->connection, $this->systemConfig, $this->config, $this->sync);
+        return new PriceRuleBoundaryTaskHandler($this->createMock(EntityRepository::class), new NullLogger(), $this->connection, $this->systemConfig, $this->config, $this->sync, $this->guard);
     }
 }

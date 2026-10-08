@@ -61,13 +61,53 @@ class ActionGuard
     public function remember(string $storeId, string $requestId, int $httpCode, string $body): void
     {
         $now = time();
-        $this->connection->executeStatement(
-            'DELETE FROM `emporiqa_action_request` WHERE `created_at` < :since',
-            ['since' => $now - self::DEDUPE_TTL_SECONDS],
-        );
+        $this->purgeExpiredAnswers($now);
         $this->connection->executeStatement(
             'REPLACE INTO `emporiqa_action_request` (`request_hash`, `http_code`, `response`, `created_at`) VALUES (:hash, :code, :body, :now)',
             ['hash' => hash('sha256', $storeId . '|' . $requestId), 'code' => $httpCode, 'body' => $body, 'now' => $now],
+        );
+    }
+
+    /**
+     * Legacy order tracking carries no request_id: a validly signed body is
+     * accepted once, so a captured request cannot be sent again while its
+     * timestamp is still fresh. Fails closed, like the rate limits.
+     */
+    public function claimLegacyBody(string $storeId, string $rawBody): bool
+    {
+        $now = time();
+        try {
+            $this->purgeExpiredAnswers($now);
+
+            return $this->connection->executeStatement(
+                'INSERT IGNORE INTO `emporiqa_action_request` (`request_hash`, `http_code`, `response`, `created_at`) VALUES (:hash, 0, \'\', :now)',
+                ['hash' => hash('sha256', $storeId . '|legacy-order-tracking|' . hash('sha256', $rawBody)), 'now' => $now],
+            ) === 1;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Remembered answers hold shopper data (names, addresses, emails), so
+     * none is kept past the replay window: deleted on every write and by the
+     * plugin's scheduled task, which also covers a store with no further calls.
+     */
+    public function purgeExpired(?int $now = null): void
+    {
+        $now ??= time();
+        $this->purgeExpiredAnswers($now);
+        $this->connection->executeStatement(
+            'DELETE FROM `emporiqa_action_rate` WHERE `expires_at` <= :now',
+            ['now' => $now],
+        );
+    }
+
+    private function purgeExpiredAnswers(int $now): void
+    {
+        $this->connection->executeStatement(
+            'DELETE FROM `emporiqa_action_request` WHERE `created_at` < :since',
+            ['since' => $now - self::DEDUPE_TTL_SECONDS],
         );
     }
 
