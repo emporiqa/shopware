@@ -55,7 +55,7 @@ class OrderSubscriber implements EventSubscriberInterface, ResetInterface
 
     public function onOrderPlaced(CheckoutOrderPlacedEvent $event): void
     {
-        if (!$this->config->isConfigured()) {
+        if (!$this->config->isConfigured() || !$this->config->isOrderAttributionEnabled()) {
             return;
         }
 
@@ -101,7 +101,7 @@ class OrderSubscriber implements EventSubscriberInterface, ResetInterface
             return;
         }
 
-        if (!$this->config->isConfigured()) {
+        if (!$this->config->isConfigured() || !$this->config->isOrderAttributionEnabled()) {
             return;
         }
 

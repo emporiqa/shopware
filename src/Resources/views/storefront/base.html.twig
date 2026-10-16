@@ -10,6 +10,8 @@
             widgetBaseUrl: emporiqaConfig.widgetBaseUrl|default('https://emporiqa.com'),
             userTokenUrl: emporiqaConfig.userTokenUrl|default('/emporiqa/api/user-token'),
             loggedIn: context.customer is not null and not context.customer.guest,
+            loadOnClick: emporiqaConfig.launcher is defined,
+            orderAttribution: emporiqaConfig.orderAttribution ?? true,
         } %}
         {% set emporiqaCartOptions = {
             cartApiUrl: emporiqaConfig.cartApiUrl|default('/emporiqa/api/cart'),
@@ -18,6 +20,14 @@
              data-emporiqa-widget-options="{{ emporiqaWidgetOptions|json_encode|e('html_attr') }}"
              data-emporiqa-cart
              data-emporiqa-cart-options="{{ emporiqaCartOptions|json_encode|e('html_attr') }}"></div>
+        {% if emporiqaConfig.launcher is defined %}
+            {# "Load the chat only when the visitor clicks": this button is drawn
+               by the shop, and nothing is loaded from Emporiqa until it is clicked
+               (emporiqa-widget.plugin.js). Colours are checked in ConfigService. #}
+            {% set look = emporiqaConfig.launcher %}
+            <style>#emporiqa-load{position:fixed;bottom:20px;right:20px;z-index:999999;width:60px;height:60px;padding:0;border:none;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,color-mix(in srgb,{{ look.primary|raw }} 82%,white 18%) 0%,{{ look.secondary|raw }} 100%);box-shadow:0 4px 15px color-mix(in srgb,{{ look.primary|raw }} 35%,transparent)}#emporiqa-load:focus-visible{outline:3px solid color-mix(in srgb,{{ look.primary|raw }} 45%,white);outline-offset:4px}#emporiqa-load[aria-busy=true]{cursor:progress;opacity:.8}#emporiqa-load svg{width:26px;height:26px;fill:#fff}#emporiqa-load circle{fill:{{ look.primary|raw }}}</style>
+            <button type="button" id="emporiqa-load" aria-label="Chat" title="Chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h4l4 4 4-4h4c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/><circle cx="8" cy="10" r="1.35"/><circle cx="12" cy="10" r="1.35"/><circle cx="16" cy="10" r="1.35"/></svg></button>
+        {% endif %}
     {% endif %}
     {{ parent() }}
 {% endblock %}

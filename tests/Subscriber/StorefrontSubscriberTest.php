@@ -110,6 +110,63 @@ class StorefrontSubscriberTest extends TestCase
     }
 
     /**
+     * "Load the chat only when the visitor clicks": the page gets the button's
+     * colours, so the template draws the button and the storefront script
+     * waits for the click.
+     */
+    public function testLoadOnClickHandsTheButtonColoursToThePage(): void
+    {
+        $this->config->method('isConfigured')->willReturn(true);
+        $this->config->method('getStoreId')->willReturn('store-abc');
+        $this->config->method('getWebhookUrl')->willReturn('https://emporiqa.com/webhooks/sync/');
+        $this->config->method('isLoadOnClick')->willReturn(true);
+        $this->config->method('getLoadOnClickColors')->willReturn(['primary' => '#7c3aed', 'secondary' => '#0d9488']);
+        $this->channelResolver->method('resolveChannelKey')->willReturn('');
+
+        $event = $this->createMock(StorefrontRenderEvent::class);
+        $event->method('getSalesChannelContext')->willReturn($this->createSalesChannelContext('channel-1'));
+        $event->method('getRequest')->willReturn(new Request());
+        $event->expects($this->once())->method('setParameter')
+            ->with('emporiqaConfig', $this->callback(fn (array $config) => $config['launcher'] === ['primary' => '#7c3aed', 'secondary' => '#0d9488']));
+
+        $this->subscriber->onStorefrontRender($event);
+    }
+
+    /** The widget learns that orders are not linked, so it sets no cookie for it. */
+    public function testOrderLinkingOffReachesTheWidget(): void
+    {
+        $this->config->method('isConfigured')->willReturn(true);
+        $this->config->method('getStoreId')->willReturn('store-abc');
+        $this->config->method('getWebhookUrl')->willReturn('https://emporiqa.com/webhooks/sync/');
+        $this->config->method('isOrderAttributionEnabled')->willReturn(false);
+        $this->channelResolver->method('resolveChannelKey')->willReturn('');
+
+        $event = $this->createMock(StorefrontRenderEvent::class);
+        $event->method('getSalesChannelContext')->willReturn($this->createSalesChannelContext('channel-1'));
+        $event->method('getRequest')->willReturn(new Request());
+        $event->expects($this->once())->method('setParameter')
+            ->with('emporiqaConfig', $this->callback(fn (array $config) => $config['orderAttribution'] === false));
+
+        $this->subscriber->onStorefrontRender($event);
+    }
+
+    public function testWithoutLoadOnClickNoButtonIsDrawn(): void
+    {
+        $this->config->method('isConfigured')->willReturn(true);
+        $this->config->method('getStoreId')->willReturn('store-abc');
+        $this->config->method('getWebhookUrl')->willReturn('https://emporiqa.com/webhooks/sync/');
+        $this->channelResolver->method('resolveChannelKey')->willReturn('');
+
+        $event = $this->createMock(StorefrontRenderEvent::class);
+        $event->method('getSalesChannelContext')->willReturn($this->createSalesChannelContext('channel-1'));
+        $event->method('getRequest')->willReturn(new Request());
+        $event->expects($this->once())->method('setParameter')
+            ->with('emporiqaConfig', $this->callback(fn (array $config) => !array_key_exists('launcher', $config)));
+
+        $this->subscriber->onStorefrontRender($event);
+    }
+
+    /**
      * The widget script is loaded from this origin on every storefront page:
      * an http Webhook URL never makes it load over plain http.
      */

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0 (2026-10-16)
+
+### Hinzugefügt
+- **Den Chat erst beim Klick laden.** Ein neuer Schalter auf der Emporiqa-Seite (Erweitert). Ist er aktiviert, stellt die Storefront den Chat-Button selbst dar, in zwei Farben, die Sie passend zu Ihrem Chat-Widget einstellen, und der Browser des Besuchers stellt keine Anfrage an Emporiqa und speichert nichts, bis der Button angeklickt wird. Der Klick lädt den Chat und öffnet ihn. Hat ein Besucher den Chat in den letzten 30 Tagen geöffnet, wird er auf weiteren Seiten sofort geladen, damit ein Gespräch weiterläuft. Proaktive Nachrichten und Besucherzahlen sind in diesem Modus deaktiviert. Für Shops, deren Datenschutzbeauftragter das verlangt. Standardmäßig deaktiviert; für Shops, die ihn nicht einschalten, ändert sich also nichts. Setzt die Emporiqa-Version vom 17.10.2026 oder später voraus.
+- **„Bestellungen mit Chats verknüpfen“ lässt sich ausschalten.** Ein neuer Schalter auf der Emporiqa-Seite (Erweitert), standardmäßig an, es ändert sich also nichts, bis Sie ihn ausschalten. Ist er aus, wird keine Bestellung an Emporiqa gesendet (weder beim Aufgeben noch beim Abschließen) und der Chat setzt kein Cookie `emporiqa_sid`; Ihr Emporiqa-Dashboard zeigt also keinen Umsatz aus Chats. Zusammen mit „Den Chat erst beim Klick laden“ wird im Browser des Besuchers nichts über das hinaus gespeichert, was der Chat braucht.
+
 ## 1.3.3 (2026-10-08)
 
 ### Sicherheit

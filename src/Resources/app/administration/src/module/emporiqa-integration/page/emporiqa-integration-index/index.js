@@ -60,6 +60,10 @@ Component.register('emporiqa-integration-index', {
                 brandAttribute: '',
                 batchSize: 50,
                 orderTracking: true,
+                loadOnClick: false,
+                orderAttribution: true,
+                loadOnClickPrimary: '#4f46e5',
+                loadOnClickSecondary: '#4338ca',
             },
 
             // What Emporiqa last said about ready-made rules (connect or Test connection)
@@ -141,6 +145,10 @@ Component.register('emporiqa-integration-index', {
 
         orderStatusRuleUrl() {
             return 'https://emporiqa.com/platform/rules/?add=order_status';
+        },
+
+        widgetAppearanceUrl() {
+            return 'https://emporiqa.com/platform/store-settings/?tab=chat_widget_appearance';
         },
 
         availableSalesChannels() {

@@ -272,6 +272,51 @@
                         bordered
                     />
 
+                    <sw-switch-field
+                        :value="settings.orderAttribution"
+                        @input="setSetting('orderAttribution', $event)"
+                        @update:value="setSetting('orderAttribution', $event)"
+                        :label="$t('emporiqa-integration.settings.advanced.orderAttribution')"
+                        :helpText="$t('emporiqa-integration.settings.advanced.orderAttributionHelp')"
+                        bordered
+                    />
+
+                    <sw-switch-field
+                        :value="settings.loadOnClick"
+                        @input="setSetting('loadOnClick', $event)"
+                        @update:value="setSetting('loadOnClick', $event)"
+                        :label="$t('emporiqa-integration.settings.advanced.loadOnClick')"
+                        :helpText="$t('emporiqa-integration.settings.advanced.loadOnClickHelp')"
+                        bordered
+                    />
+
+                    <template v-if="settings.loadOnClick">
+                        <sw-colorpicker
+                            :value="settings.loadOnClickPrimary"
+                            @input="setSetting('loadOnClickPrimary', $event)"
+                            @update:value="setSetting('loadOnClickPrimary', $event)"
+                            colorOutput="hex"
+                            :alpha="false"
+                            :label="$t('emporiqa-integration.settings.advanced.loadOnClickPrimary')"
+                        />
+                        <sw-colorpicker
+                            :value="settings.loadOnClickSecondary"
+                            @input="setSetting('loadOnClickSecondary', $event)"
+                            @update:value="setSetting('loadOnClickSecondary', $event)"
+                            colorOutput="hex"
+                            :alpha="false"
+                            :label="$t('emporiqa-integration.settings.advanced.loadOnClickSecondary')"
+                        />
+                        <p class="emporiqa-integration-index__help-text">
+                            {{ $t('emporiqa-integration.settings.advanced.loadOnClickColorsHelp') }}
+                        </p>
+                        <div class="emporiqa-integration-index__load-on-click-link">
+                            <sw-button size="small" @click="openExternal(widgetAppearanceUrl)">
+                                {{ $t('emporiqa-integration.settings.advanced.loadOnClickOpenAppearance') }}
+                            </sw-button>
+                        </div>
+                    </template>
+
                     <sw-single-select
                         :label="$t('emporiqa-integration.settings.syncSettings.brandSource')"
                         :options="brandAttributeOptions"

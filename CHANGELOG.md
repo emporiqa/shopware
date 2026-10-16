@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0 (2026-10-16)
+
+### Added
+- **Load the chat only when the visitor clicks.** A new switch on the Emporiqa page (Advanced). When it is on, the storefront draws the chat button itself, in two colours you set to match your chat widget, and the visitor's browser makes no request to Emporiqa and stores nothing until the button is clicked. The click loads the chat and opens it. A visitor who opened the chat in the last 30 days gets it loaded at once on later pages, so a conversation carries on. Proactive messages and visitor counts are off in this mode. For shops whose data protection officer asks for it; off by default, so nothing changes for a shop that does not turn it on. Needs the Emporiqa release of 2026-10-17 or later.
+- **Link orders to chats can be switched off.** A new switch on the Emporiqa page (Advanced), on by default, so nothing changes until you turn it off. Off, no order is sent to Emporiqa (neither when it is placed nor when it is completed) and the chat sets no `emporiqa_sid` cookie, so your Emporiqa dashboard shows no revenue from chat. Together with Load the chat only when the visitor clicks, nothing is stored in the visitor's browser beyond what the chat needs.
+
 ## 1.3.3 (2026-10-08)
 
 ### Security

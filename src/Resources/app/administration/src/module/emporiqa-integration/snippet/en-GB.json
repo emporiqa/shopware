@@ -82,7 +82,15 @@
                 "enabledSalesChannels": "Synced Sales Channels",
                 "enabledSalesChannelsHelp": "Select which sales channels to sync to Emporiqa. Unselected channels are left out of product and page syncs and the chat widget is not shown on their storefronts.",
                 "enabledSalesChannelsRequired": "Select at least one sales channel.",
-                "enabledSalesChannelsEmpty": "No storefront sales channels found."
+                "enabledSalesChannelsEmpty": "No storefront sales channels found.",
+                "loadOnClick": "Load the chat only when the visitor clicks",
+                "loadOnClickHelp": "Your store shows the chat button itself, and nothing is loaded from Emporiqa or stored in the visitor's browser until they click it. Once a visitor has opened the chat, later pages load it straight away for 30 days. Proactive messages and visitor counts are off. To store nothing beyond the chat after the click either, also switch off Link orders to chats.",
+                "loadOnClickPrimary": "Button colour",
+                "loadOnClickSecondary": "Button gradient colour",
+                "loadOnClickColorsHelp": "Use the same two colours as your chat widget in Emporiqa, so this button looks like the chat button that replaces it after the click.",
+                "loadOnClickOpenAppearance": "Open Widget appearance in Emporiqa",
+                "orderAttribution": "Link orders to chats",
+                "orderAttributionHelp": "Sends each order (order number, total, currency and items, no customer details) to Emporiqa, and the chat keeps a 1-hour cookie, so your Emporiqa dashboard shows the revenue that came from chats. Off: no orders are sent and no cookie is set."
             }
         },
         "sync": {

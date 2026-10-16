@@ -92,6 +92,46 @@ class ConfigService implements ConfigServiceInterface
         return (bool) ($this->systemConfig->get(self::CONFIG_PREFIX . 'orderTracking', $salesChannelId) ?? true);
     }
 
+    /**
+     * "Load the chat only when the visitor clicks": the storefront draws the
+     * chat button itself and loads nothing from Emporiqa until it is clicked.
+     */
+    public function isLoadOnClick(?string $salesChannelId = null): bool
+    {
+        return (bool) $this->systemConfig->get(self::CONFIG_PREFIX . 'loadOnClick', $salesChannelId);
+    }
+
+    /**
+     * "Link orders to chats". Off: no order is sent to Emporiqa and the chat
+     * sets no cookie to carry the conversation to the checkout. On unless
+     * switched off.
+     */
+    public function isOrderAttributionEnabled(?string $salesChannelId = null): bool
+    {
+        return (bool) ($this->systemConfig->get(self::CONFIG_PREFIX . 'orderAttribution', $salesChannelId) ?? true);
+    }
+
+    /**
+     * The colours of the button the storefront draws in that mode, set by the
+     * merchant to match their chat button. Only hex colours, because they are
+     * written into a style.
+     *
+     * @return array{primary: string, secondary: string}
+     */
+    public function getLoadOnClickColors(?string $salesChannelId = null): array
+    {
+        $color = function (string $key, string $fallback) use ($salesChannelId): string {
+            $value = trim((string) $this->systemConfig->get(self::CONFIG_PREFIX . $key, $salesChannelId));
+
+            return preg_match('/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i', $value) === 1 ? $value : $fallback;
+        };
+
+        return [
+            'primary' => $color('loadOnClickPrimary', '#4f46e5'),
+            'secondary' => $color('loadOnClickSecondary', '#4338ca'),
+        ];
+    }
+
     public function saveRulesStatus(array $answer): void
     {
         // An answer without the key (an older platform) changes nothing.

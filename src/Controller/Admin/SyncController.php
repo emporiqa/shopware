@@ -675,11 +675,11 @@ class SyncController extends AbstractController
                 'channelMapping', 'brandAttribute', 'orderCompletedStates',
                 'storeId', 'webhookSecret', 'webhookUrl',
                 'syncProducts', 'syncPages', 'batchSize', 'enabledLanguages', 'enabledSalesChannels',
-                'orderTracking',
+                'orderTracking', 'loadOnClick', 'loadOnClickPrimary', 'loadOnClickSecondary', 'orderAttribution',
             ];
 
             $booleanKeys = [
-                'syncProducts', 'syncPages', 'orderTracking',
+                'syncProducts', 'syncPages', 'orderTracking', 'loadOnClick', 'orderAttribution',
             ];
             $integerKeys = ['batchSize'];
 

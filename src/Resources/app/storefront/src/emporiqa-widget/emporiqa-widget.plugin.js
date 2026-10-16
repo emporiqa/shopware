@@ -5,6 +5,12 @@ const Plugin = window.PluginBaseClass;
 // that has since signed out.
 const TOKEN_MAX_AGE_MS = 5 * 60 * 1000;
 
+// "Load the chat only when the visitor clicks": once a visitor opened the chat,
+// later pages load it at once for this long, so a conversation carries on.
+// embed.js writes the key on every open.
+const OPENED_KEY_PREFIX = 'emporiqaChatOpened_';
+const OPENED_FOR_MS = 30 * 24 * 60 * 60 * 1000;
+
 export default class EmporiqaWidgetPlugin extends Plugin {
     static options = {
         storeId: '',
@@ -14,6 +20,8 @@ export default class EmporiqaWidgetPlugin extends Plugin {
         widgetBaseUrl: 'https://emporiqa.com',
         userTokenUrl: '/emporiqa/api/user-token',
         loggedIn: false,
+        loadOnClick: false,
+        orderAttribution: true,
     };
 
     init() {
@@ -26,10 +34,85 @@ export default class EmporiqaWidgetPlugin extends Plugin {
         this._tokenAnswer = null;
         this._tokenAnsweredAt = 0;
         this._answerTokenRequests(config);
-        this._loadWidget(config);
+        if (config.loadOnClick) {
+            this._loadOnClick(config);
+        } else {
+            this._loadWidget(config);
+        }
     }
 
-    _loadWidget(config) {
+    /**
+     * The button in base.html.twig stands in for the chat. Until it is
+     * clicked nothing is requested from Emporiqa and nothing is stored; the one
+     * read is whether this visitor opened the chat before.
+     */
+    _loadOnClick(config) {
+        const button = document.getElementById('emporiqa-load');
+        if (!button) {
+            return;
+        }
+        let started = false;
+        let openWhenReady = false;
+
+        const handOver = () => {
+            const chat = window.EmporiqaChat;
+            if (openWhenReady && chat && !chat.isOpen) {
+                chat.open();
+            }
+            button.remove();
+        };
+
+        const load = () => {
+            if (started) {
+                return;
+            }
+            // The chat is on the page already (another integration added it).
+            if (window.EmporiqaChat) {
+                handOver();
+                return;
+            }
+            started = true;
+            button.setAttribute('aria-busy', 'true');
+            // No word from the chat (blocked, or an Emporiqa version that does
+            // not say): hand over if it is there anyway, or allow another try.
+            setTimeout(() => {
+                if (!button.isConnected) {
+                    return;
+                }
+                if (window.EmporiqaChat) {
+                    handOver();
+                    return;
+                }
+                started = false;
+                button.removeAttribute('aria-busy');
+            }, 15000);
+            const script = this._loadWidget(config, true);
+            script.onerror = () => {
+                started = false;
+                button.removeAttribute('aria-busy');
+                script.remove();
+            };
+        };
+
+        window.addEventListener('emporiqa:ready', handOver);
+        window.addEventListener('emporiqa:unavailable', () => button.remove());
+        window.EmporiqaLoad = load;
+        button.addEventListener('click', () => {
+            openWhenReady = true;
+            load();
+        });
+
+        try {
+            const openedAt = Number(window.localStorage.getItem(OPENED_KEY_PREFIX + config.storeId));
+            if (openedAt && Date.now() - openedAt < OPENED_FOR_MS) {
+                load();
+            }
+        } catch (e) {
+            // Storage blocked: the visitor clicks again on the next page.
+        }
+    }
+
+    _loadWidget(config, onClick = false) {
         const params = new URLSearchParams({
             store_id: config.storeId,
             language: config.language,
@@ -39,12 +122,21 @@ export default class EmporiqaWidgetPlugin extends Plugin {
         if (config.currency) {
             params.set('currency', config.currency);
         }
+        if (onClick) {
+            params.set('load', 'click');
+        }
+        // Orders are not linked to chats: the widget sets no cookie for it.
+        if (!config.orderAttribution) {
+            params.set('attribution', 'off');
+        }
 
         const script = document.createElement('script');
         script.async = true;
         script.crossOrigin = 'anonymous';
         script.src = config.widgetBaseUrl + '/chat/embed/?' + params.toString();
         document.head.appendChild(script);
+
+        return script;
     }
 
     /**

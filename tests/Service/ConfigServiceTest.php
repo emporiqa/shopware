@@ -356,4 +356,33 @@ class ConfigServiceTest extends TestCase
 
         $this->assertSame('group-uuid-123', $this->configService->getBrandAttribute());
     }
+
+    /**
+     * The colours go into the style of the button the storefront draws, so
+     * only a hex colour gets there; anything else is the default.
+     */
+    public function testLoadOnClickColorsAreHexOrTheDefault(): void
+    {
+        $this->systemConfig->method('get')->willReturnMap([
+            ['EmporiqaIntegration.config.loadOnClickPrimary', null, ' #7C3AED '],
+            ['EmporiqaIntegration.config.loadOnClickSecondary', null, 'red}</style><script>alert(1)</script>'],
+        ]);
+
+        $this->assertSame(
+            ['primary' => '#7C3AED', 'secondary' => '#4338ca'],
+            $this->configService->getLoadOnClickColors(),
+        );
+    }
+
+    /** On for every shop that never touched the switch, as before it existed. */
+    public function testOrderLinkingIsOnUntilSwitchedOff(): void
+    {
+        $this->systemConfig->method('get')->willReturnMap([
+            ['EmporiqaIntegration.config.orderAttribution', null, null],
+            ['EmporiqaIntegration.config.orderAttribution', 'channel-off', false],
+        ]);
+
+        $this->assertTrue($this->configService->isOrderAttributionEnabled());
+        $this->assertFalse($this->configService->isOrderAttributionEnabled('channel-off'));
+    }
 }

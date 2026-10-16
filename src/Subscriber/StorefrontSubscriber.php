@@ -86,7 +86,12 @@ class StorefrontSubscriber implements EventSubscriberInterface
             'widgetBaseUrl' => $widgetBaseUrl,
             'cartApiUrl' => $basePath . '/emporiqa/api/cart',
             'userTokenUrl' => $basePath . '/emporiqa/api/user-token',
+            'orderAttribution' => $this->config->isOrderAttributionEnabled($salesChannelId),
         ];
+
+        if ($this->config->isLoadOnClick($salesChannelId)) {
+            $emporiqaConfig['launcher'] = $this->config->getLoadOnClickColors($salesChannelId);
+        }
 
         $widgetParamsEvent = new WidgetParamsEvent($emporiqaConfig, $event->getSalesChannelContext());
         $this->eventDispatcher->dispatch($widgetParamsEvent);

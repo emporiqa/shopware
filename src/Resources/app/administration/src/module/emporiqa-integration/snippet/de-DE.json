@@ -82,7 +82,15 @@
                 "enabledSalesChannels": "Synchronisierte Verkaufskanäle",
                 "enabledSalesChannelsHelp": "Wählen Sie, welche Verkaufskanäle mit Emporiqa synchronisiert werden. Nicht ausgewählte Kanäle werden bei der Produkt- und Seitensynchronisierung ausgelassen und das Chat-Widget wird auf ihren Storefronts nicht angezeigt.",
                 "enabledSalesChannelsRequired": "Wählen Sie mindestens einen Verkaufskanal aus.",
-                "enabledSalesChannelsEmpty": "Keine Storefront-Verkaufskanäle gefunden."
+                "enabledSalesChannelsEmpty": "Keine Storefront-Verkaufskanäle gefunden.",
+                "loadOnClick": "Den Chat erst beim Klick laden",
+                "loadOnClickHelp": "Ihr Shop zeigt den Chat-Button selbst, und bis der Besucher darauf klickt, wird nichts von Emporiqa geladen und nichts in seinem Browser gespeichert. Hat ein Besucher den Chat geöffnet, wird er auf weiteren Seiten 30 Tage lang sofort geladen. Proaktive Nachrichten und Besucherzahlen sind dann deaktiviert. Damit auch nach dem Klick nichts über den Chat hinaus gespeichert wird, schalten Sie zusätzlich „Bestellungen mit Chats verknüpfen“ aus.",
+                "loadOnClickPrimary": "Button-Farbe",
+                "loadOnClickSecondary": "Verlaufsfarbe des Buttons",
+                "loadOnClickColorsHelp": "Verwenden Sie dieselben zwei Farben wie Ihr Chat-Widget in Emporiqa, damit dieser Button wie der Chat-Button aussieht, der ihn nach dem Klick ersetzt.",
+                "loadOnClickOpenAppearance": "„Widget appearance“ in Emporiqa öffnen",
+                "orderAttribution": "Bestellungen mit Chats verknüpfen",
+                "orderAttributionHelp": "Sendet jede Bestellung (Bestellnummer, Gesamtbetrag, Währung und Artikel, keine Kundendaten) an Emporiqa, und der Chat setzt ein Cookie für 1 Stunde, damit Ihr Emporiqa-Dashboard den Umsatz aus Chats zeigt. Aus: Es werden keine Bestellungen gesendet und kein Cookie gesetzt."
             }
         },
         "sync": {

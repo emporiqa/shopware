@@ -26,6 +26,15 @@ interface ConfigServiceInterface
 
     public function isOrderTrackingEnabled(?string $salesChannelId = null): bool;
 
+    public function isLoadOnClick(?string $salesChannelId = null): bool;
+
+    public function isOrderAttributionEnabled(?string $salesChannelId = null): bool;
+
+    /**
+     * @return array{primary: string, secondary: string}
+     */
+    public function getLoadOnClickColors(?string $salesChannelId = null): array;
+
     /**
      * @return array<string, string> Map of Shopware sales channel ID => Emporiqa channel key
      */

@@ -48,6 +48,7 @@ class OrderSubscriberTest extends TestCase
         $this->requestStack = $this->createMock(RequestStack::class);
         $this->logger = $this->createMock(LoggerInterface::class);
         $this->eventDispatcher = $this->createMock(EventDispatcherInterface::class);
+        $this->config->method('isOrderAttributionEnabled')->willReturn(true);
 
         $this->subscriber = new OrderSubscriber(
             $this->config,
@@ -83,6 +84,32 @@ class OrderSubscriberTest extends TestCase
         $this->messageBus->expects($this->never())->method('dispatch');
 
         $this->subscriber->onOrderPlaced($event);
+    }
+
+    /**
+     * "Link orders to chats" off: no order leaves the shop, neither when it
+     * is placed nor when it reaches a completed state.
+     */
+    public function testWithOrderLinkingOffNoOrderIsSent(): void
+    {
+        $config = $this->createMock(ConfigServiceInterface::class);
+        $config->method('isConfigured')->willReturn(true);
+        $config->method('isOrderAttributionEnabled')->willReturn(false);
+        $config->method('getOrderCompletedStates')->willReturn(['order.state.completed']);
+        $this->orderRepository->expects($this->never())->method('search');
+        $this->messageBus->expects($this->never())->method('dispatch');
+        $subscriber = new OrderSubscriber(
+            $config,
+            $this->messageBus,
+            $this->orderRepository,
+            $this->orderTransactionRepository,
+            $this->requestStack,
+            $this->logger,
+            $this->eventDispatcher,
+        );
+
+        $subscriber->onOrderPlaced($this->createOrderPlacedEvent('order-placed-9', '20009'));
+        $subscriber->onOrderStateChanged($this->createStateChangeEvent('order-placed-9', 'completed'));
     }
 
     public function testOnOrderPlacedDispatchesOrderPlacedWebhook(): void
