@@ -2,20 +2,21 @@
 
 *[English version](README.md)*
 
-[Emporiqa](https://emporiqa.com) für Shopware 6 ist der KI-Chat, der vor dem Kauf verkauft und danach weiterhilft. Vor dem Kauf beschreiben Kunden, was sie brauchen, oder laden ein Foto hoch, und der Chat findet passende Produkte aus Ihrem Katalog, vergleicht sie und legt sie in den Warenkorb. Nach dem Kauf beantwortet er Fragen anhand Ihrer CMS-Seiten und sagt Kunden, wo ihre Bestellung ist. Angemeldete Kunden sehen ihre eigenen Preise, so wie Ihr Shop sie berechnet, und werden mit dem Namen begrüßt. Braucht ein Kunde einen Menschen, übernimmt Ihr Team den Chat. Er antwortet in 65+ Sprachen. Dieses Plugin synchronisiert Ihren Produktkatalog und Ihre CMS-Seiten mit Emporiqa, bindet das Chat-Widget in Ihre Storefront ein und stellt Endpunkte für Warenkorb-Aktionen im Chat und für die Bestellverfolgung bereit.
+[Emporiqa](https://emporiqa.com) ist ein KI-Shop-Assistent für Verkauf und Kundenservice, im Chat und in den Kunden-E-Mails Ihres Shops. Er arbeitet Hand in Hand mit Ihrem Team, das jeden Chat übernehmen kann. Vor dem Kauf beschreiben Kunden, was sie brauchen, oder laden ein Foto hoch, und der Chat findet passende Produkte aus Ihrem Katalog, vergleicht sie und legt sie in den Warenkorb. Nach dem Kauf beantwortet er Fragen anhand Ihrer CMS-Seiten und sagt Kunden, wo ihre Bestellung ist. Angemeldete Kunden sehen ihre eigenen Preise, so wie Ihr Shop sie berechnet, und werden mit dem Namen begrüßt. Braucht ein Kunde einen Menschen, übernimmt Ihr Team den Chat. Der Chat antwortet in 65 Sprachen. Außerdem entwirft Emporiqa Antworten auf die Kunden-E-Mails Ihres Shops (siehe unten). Dieses Plugin synchronisiert Ihren Produktkatalog und Ihre CMS-Seiten mit Emporiqa, bindet das Chat-Widget in Ihre Storefront ein und stellt Endpunkte für Warenkorb-Aktionen im Chat und für die Bestellverfolgung bereit.
 
 [![Geöffnetes Emporiqa-Chat-Widget in einer Storefront. Auf die Frage „Welche Kopfhörer mit Geräuschunterdrückung haben Sie für lange Flüge, unter 400 Euro?“ nennt es den Sennheiser Momentum 4 mit bis zu 60 Stunden Akkulaufzeit mit ANC, den Sony WH-1000XM5 mit 30 Stunden und den Beats Studio Pro mit 24 Stunden und zeigt Sennheiser und Sony als Produktkarten mit Foto, Preis und Warenkorb-Button, darunter ein Eingabefeld mit Foto- und Sprach-Button](docs/images/lead-answer-de.webp)](https://demo.emporiqa.com)
 
 - **Integration im Überblick**: [emporiqa.com/de/integrations/shopware/](https://emporiqa.com/de/integrations/shopware/)
 - **Vollständige Dokumentation**: [emporiqa.com/de/docs/shopware/](https://emporiqa.com/de/docs/shopware/) (Referenz des Webhook-Formats, Referenz zu CLI und Admin-API, Beispiele zu Events, Fehlersuche)
 - **Funktionen**: [emporiqa.com/de/features/](https://emporiqa.com/de/features/) · **FAQ**: [emporiqa.com/de/faq/](https://emporiqa.com/de/faq/) · **Preise**: [emporiqa.com/de/pricing/](https://emporiqa.com/de/pricing/)
-- **Live-Demo**: [demo.emporiqa.com](https://demo.emporiqa.com) und ein [30-Sekunden-Video](https://www.youtube.com/watch?v=qck3AqYSFQw). Diese Demo verkauft Elektronik, und das Verhalten ist bei jedem Katalog dasselbe.
+- **Live-Demo**: [demo.emporiqa.com](https://demo.emporiqa.com) und ein [30-Sekunden-Video](https://www.youtube.com/watch?v=qck3AqYSFQw). Diese Demo verkauft Elektronik; in Ihrem Shop antwortet der Chat aus Ihrem eigenen Katalog, eine Kosmetikkundin fragt dort etwa nach „einer parfümfreien Feuchtigkeitscreme für empfindliche Haut unter 30 €“.
+- **Einrichten mit Claude oder ChatGPT**: Verbinden Sie Claude oder ChatGPT mit Emporiqa: Claude bzw. ChatGPT legt dann Ihren Shop an, richtet den Chat ein und führt Sie durch die Installation ([emporiqa.com/docs/ai-assistants/](https://emporiqa.com/docs/ai-assistants/)). Das Plugin installieren und auf „Go live“ klicken Sie selbst.
 
 ## Voraussetzungen
 
-- Shopware 6.6 oder 6.7
+- Shopware 6.6 oder 6.7. Selbst gehostetes Shopware 6 (inkl. PaaS), nicht Shopware Cloud. Nicht im Shopware Store: Installation über GitHub oder Composer.
 - PHP 8.2+
-- Ein [Emporiqa-Konto](https://emporiqa.com/platform/create-store/). Anmeldung ohne Karte; 25 $ Startguthaben (rund 100 kostenfreie Konversationen) werden automatisch gutgeschrieben
+- Ein [Emporiqa-Konto](https://emporiqa.com/platform/create-store/). Anmeldung ohne Karte; 25 $ Startguthaben (etwa 100 Gespräche, einmalig) werden beim Anlegen des Shops gutgeschrieben
 
 ## Installation
 
@@ -39,7 +40,8 @@ bin/console cache:clear
 Nach der Installation über einen der beiden Wege:
 
 1. Öffnen Sie die Emporiqa-Erweiterung und klicken Sie auf **Mit Emporiqa verbinden**. Es öffnet sich ein neuer Tab auf emporiqa.com. Legen Sie ein kostenfreies Konto an (keine Karte erforderlich, 25 $ Startguthaben) oder melden Sie sich an, falls Sie bereits eines haben, und wählen Sie dann den Shop aus, den Sie verbinden möchten (oder legen Sie einen neuen an). Wenn Sie zurückkehren, ist das Plugin verbunden.
-2. Klicken Sie im Tab **Synchronisierung** auf **Alles synchronisieren**. Produkte und Seiten werden übertragen; das Widget erscheint in Ihrer Storefront, sobald das erste Produkt angekommen ist.
+2. Klicken Sie im Tab **Synchronisierung** auf **Alles synchronisieren**. Produkte und Seiten werden übertragen.
+3. Sobald die Synchronisierung abgeschlossen ist, testen Sie den Chat im [Emporiqa-Dashboard](https://emporiqa.com/platform/) und klicken Sie auf **Go live**. Neue Shops starten mit ausgeschaltetem Chat: Bis dahin sehen Ihre Kunden in Ihrer Storefront nichts.
 
 **Läuft Ihr Shop über HTTP, oder tragen Sie die Zugangsdaten lieber selbst ein?** Tragen Sie in den Verbindungseinstellungen eine **Shop-ID** und ein **Webhook-Geheimnis** ein. Diese finden Sie in Ihrem Emporiqa-Dashboard unter **Settings → Integration**; das Dashboard ist englischsprachig. Beide Wege führen zum selben Ergebnis.
 
@@ -48,6 +50,8 @@ Nach der Installation über einen der beiden Wege:
 **Kundeninfo.** Für einen angemeldeten Kunden beantwortet das Plugin außerdem den signierten Kundeninfo-Aufruf von Emporiqa: Name und E-Mail-Adresse seines Kundenkontos und seine 10 neuesten Bestellungen (Nummer, Datum, Status und Gesamtbetrag), damit der Chat „Wo ist meine Bestellung?“ mit der neuesten Bestellung beantwortet, wenn der Kunde keine Nummer nennt, und seine E-Mail-Adresse in Ihren Regeln einträgt. Enthalten sind nur die eigenen Bestellungen des Kontos in den Verkaufskanälen, die mit Ihrem Emporiqa-Shop synchronisiert werden; eine Gastbestellung mit derselben E-Mail-Adresse gehört nicht dazu. Einzurichten ist nichts.
 
 Die ältere Bestellverfolgung funktioniert für Shops, die sie nutzen, weiter wie bisher; bei einer Neuinstallation ist sie ausgeschaltet, da die Regel „Order status“ sie ersetzt. Wo fertige Regeln angeboten werden, steht sie unter **Erweitert** als *Alte Bestellverfolgung (veraltet)*: Sobald „Order status“ eingeschaltet ist, entfernen Sie ihre Adresse in Ihrem Emporiqa-Dashboard (**Settings > Integration > For your developer > Order tracking API URL**, das Dashboard ist englischsprachig) und schalten Sie sie dann aus.
+
+**Kunden-E-Mails.** Verbinden Sie im Emporiqa-Dashboard das Postfach Ihres Shops (Gmail, Google Workspace, Microsoft 365, Outlook.com, IONOS, Strato, OVHcloud oder jedes IMAP-Postfach), und Emporiqa entwirft jede Antwort auf Basis Ihres Katalogs und Ihrer Seiten, in der Sprache des Kunden. Bestelldetails in den Entwürfen sowie automatische Antworten funktionieren mit Gmail, Google Workspace und Microsoft (Outlook.com und Microsoft 365). Automatische Antworten bleiben aus, bis Sie sie einschalten. Sie gelten nur für Themen, zu denen Ihr Team den Entwurf schon oft unverändert gesendet hat, und jede wartet 10 Minuten, damit jeder sie stoppen kann. Jede andere Antwort ist ein Entwurf, den Ihr Team prüft und von Ihrer eigenen Adresse aus sendet. Emporiqa erstattet, storniert oder ändert niemals eine Bestellung. In Shopware ist nichts einzurichten. Mehr unter [emporiqa.com/de/customer-emails/](https://emporiqa.com/de/customer-emails/).
 
 ## Konfiguration
 
@@ -213,11 +217,15 @@ Jeder Service ist gegen ein Interface definiert (`ProductFormatterInterface`, `C
 
 ## Preise
 
-Das Plugin ist kostenfrei. Emporiqa selbst rechnet nutzungsbasiert ab: 0 $/Monat Grundgebühr plus 0,25 $ pro Konversation, mit 25 $ Startguthaben (rund 100 Konversationen) und ohne Karte bei der Anmeldung. Eine monatliche Kostenobergrenze legen Sie im Abrechnungsbereich selbst fest und können sie erhöhen, senken oder entfernen. Der Sprachmodus (sprechen statt tippen: der Kunde spricht und bekommt die Antwort vorgelesen) ist optional und standardmäßig ausgeschaltet. Spricht der Kunde, kommen einmalig 0,15 $ für dieses Gespräch hinzu, die auf die Obergrenze angerechnet werden. Preise verstehen sich zzgl. MwSt. Für Kataloge über 100.000 Produkte gibt es ein Enterprise-Angebot. Alle Preisangaben unter [emporiqa.com/de/pricing/](https://emporiqa.com/de/pricing/).
+Das Plugin ist kostenfrei. Emporiqa selbst rechnet nutzungsbasiert ab: 0,25 $ pro Gespräch und 0,15 $ pro von der KI entworfener und von Ihnen gesendeter E-Mail-Antwort, mit 25 $ Startguthaben (etwa 100 Gespräche, einmalig) und ohne Karte bei der Anmeldung. Keine Gebühren pro Nutzer, die KI-Modellkosten sind enthalten. Sie legen im Abrechnungsbereich ein Monatslimit fest (199 $ für neue Shops, jederzeit senkbar): eine Obergrenze, keine Gebühr. Sie können es auch erhöhen oder aufheben. Ist es erreicht, wird der Chat in Ihrem Shop ausgeblendet und nichts mehr berechnet. Der Sprachmodus (sprechen statt tippen: der Kunde spricht und bekommt die Antwort vorgelesen) ist optional und standardmäßig ausgeschaltet. Spricht der Kunde, kommen einmalig 0,15 $ für dieses Gespräch hinzu, die auf das Monatslimit angerechnet werden. Preise verstehen sich zzgl. MwSt. Für Kataloge über 100.000 Produkte gibt es ein Enterprise-Angebot. Alle Preisangaben unter [emporiqa.com/de/pricing/](https://emporiqa.com/de/pricing/).
+
+## Datenschutz
+
+Anwendung, Datenbanken und Suchindex laufen auf Servern von Hetzner in Deutschland. Die Antworten erzeugt OpenAI in den USA auf Grundlage der EU-Standardvertragsklauseln; Ihre Daten werden nicht zum Training verwendet, und OpenAI speichert Anfragen bis zu 30 Tage zur Missbrauchserkennung. Chatverläufe werden nach 90 Tagen gelöscht. Der [Auftragsverarbeitungsvertrag (AVV)](https://emporiqa.com/de/dpa/) gilt automatisch, ohne Unterschrift. Eine von der Rosel Group unterschriebene Fassung steht unter [emporiqa.com/de/dpa](https://emporiqa.com/de/dpa/) zum Download bereit. Die Unterauftragsverarbeiter stehen unter [emporiqa.com/de/subprocessors/](https://emporiqa.com/de/subprocessors/).
 
 ## Support
 
-Schreiben Sie an support@emporiqa.com.
+Schreiben Sie an support@emporiqa.com. Rosen Hristov begleitet jeden Shop selbst, vor und nach dem Kauf.
 
 ## Lizenz
 

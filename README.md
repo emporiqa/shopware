@@ -2,20 +2,21 @@
 
 *[Deutsche Fassung](README_de-DE.md)*
 
-[Emporiqa](https://emporiqa.com) for Shopware 6 is AI chat that sells before the purchase and serves after it. Before the purchase, shoppers describe what they need or upload a photo, and it finds matching products from your catalog, compares them and adds them to the cart. After it, it answers questions from your CMS pages and tells customers where their order is. A signed-in customer sees their own prices, as your shop calculates them, and is greeted by name. When a shopper needs a person, your team takes over the chat. It answers in 65+ languages. This plugin syncs your product catalog and CMS pages to Emporiqa, embeds the chat widget on your storefront, and exposes endpoints for in-chat cart operations and order tracking.
+[Emporiqa](https://emporiqa.com) is an AI shop assistant for sales and support, in the chat on your shop and in your shop's customer emails, working with your team: a person can take over any chat. Before the purchase, shoppers describe what they need or upload a photo, and it finds matching products from your catalog, compares them and adds them to the cart. After it, it answers questions from your CMS pages and tells customers where their order is. A signed-in customer sees their own prices, as your shop calculates them, and is greeted by name. When a shopper needs a person, your team takes over the chat. It answers in 65 languages. It also drafts replies to your shop's customer emails (see below). This plugin syncs your product catalog and CMS pages to Emporiqa, embeds the chat widget on your storefront, and exposes endpoints for in-chat cart operations and order tracking.
 
 [![Emporiqa chat widget open on a storefront, answering which noise cancelling headphones under 400 euros suit long flights: it names the Sennheiser Momentum 4 for up to 60 hours with ANC and the Sony WH-1000XM5 at 250 g, and shows both as product cards with photo, price and a Cart button, above a message box with a photo button and a voice button](docs/images/lead-answer.webp)](https://demo.emporiqa.com)
 
 - **Integration overview**: [emporiqa.com/integrations/shopware/](https://emporiqa.com/integrations/shopware/)
 - **Full documentation**: [emporiqa.com/docs/shopware/](https://emporiqa.com/docs/shopware/) (webhook format reference, CLI and admin API reference, event examples, troubleshooting)
 - **Features**: [emporiqa.com/features/](https://emporiqa.com/features/) · **FAQ**: [emporiqa.com/faq/](https://emporiqa.com/faq/) · **Pricing**: [emporiqa.com/pricing/](https://emporiqa.com/pricing/)
-- **Live demo**: [demo.emporiqa.com](https://demo.emporiqa.com) and a [30-second video](https://www.youtube.com/watch?v=y7ARSIUxuXI). That demo sells electronics, and the behavior is the same on any catalog.
+- **Live demo**: [demo.emporiqa.com](https://demo.emporiqa.com) and a [30-second video](https://www.youtube.com/watch?v=y7ARSIUxuXI). That demo sells electronics; on your shop it answers from your own catalog, so a cosmetics shopper can ask for "a fragrance-free moisturiser for sensitive skin under $30" the same way.
+- **Set it up from Claude or ChatGPT**: connect your assistant and it creates your store, sets up the chat and walks you through the install ([emporiqa.com/docs/ai-assistants/](https://emporiqa.com/docs/ai-assistants/)). You install the plugin and press Go live yourself.
 
 ## Requirements
 
-- Shopware 6.6 or 6.7
+- Shopware 6.6 or 6.7. Self-hosted Shopware 6 (incl. PaaS). Not Shopware Cloud. Not in the Shopware Store: install from GitHub or Composer.
 - PHP 8.2+
-- An [Emporiqa account](https://emporiqa.com/platform/create-store/). Sign up with no card; $25 of signup credit (~100 free conversations) auto-applied
+- An [Emporiqa account](https://emporiqa.com/platform/create-store/). Sign up with no card; $25 of signup credit (about 100 conversations, once) is applied when the store is created
 
 ## Installation
 
@@ -39,7 +40,8 @@ bin/console cache:clear
 After installing by either method above:
 
 1. Open the Emporiqa extension and click **Connect to Emporiqa**. A new tab opens on emporiqa.com. Create a free account (no card required, $25 of signup credit) or sign in if you already have one, then pick the store you want to connect (or create a new one). The plugin is connected when you return.
-2. On the **Sync** tab, click **Sync All**. Products and pages flow through; the widget appears on your storefront when the first product arrives.
+2. On the **Sync** tab, click **Sync All**. Products and pages flow through.
+3. When the sync is done, test the chat in your [Emporiqa dashboard](https://emporiqa.com/platform/) and press **Go live**. New stores start with the chat off: shoppers see nothing on your storefront until you do.
 
 **On HTTP, or prefer to paste credentials yourself?** In the Connection settings, paste a **Store ID** and **Webhook Secret** from your Emporiqa dashboard under **Settings → Integration**. Both flows reach the same place.
 
@@ -48,6 +50,8 @@ After installing by either method above:
 **Customer info.** For a signed-in shopper the plugin also answers Emporiqa's signed customer info call: the name and email of their customer account and their 10 newest orders (number, date, status and total), so the chat answers "where is my order?" with their newest order when they give no number, and fills in their email in your rules. Only the account's own orders in the sales channels synced to your Emporiqa store are included; a guest order placed with the same email is not. Nothing to set up.
 
 The older order tracking keeps working as before for stores that use it; a new install has it switched off, since the Order status rule replaces it. Where ready-made rules are offered it sits under **Advanced** as *Old order tracking (deprecated)*: once Order status is on, remove its address in your Emporiqa dashboard (**Settings > Integration > For your developer > Order tracking API URL**), then switch it off.
+
+**Customer emails.** In your Emporiqa dashboard, connect your shop's mailbox (Gmail, Google Workspace, Microsoft 365, Outlook.com, IONOS, Strato, OVHcloud or any IMAP mailbox) and Emporiqa drafts each reply from your catalog and pages, in the customer's language. Order details in drafts, and automatic replies, work on Gmail, Google Workspace and Microsoft (Outlook.com and Microsoft 365). Automatic replies are off until you switch them on. They cover only topics your team has already answered many times without changing the draft, and each waits 10 minutes so anyone can stop it. Every other reply is a draft your team checks and sends from your own address. Emporiqa never refunds, cancels or changes an order. Nothing to set up in Shopware. See [emporiqa.com/customer-emails/](https://emporiqa.com/customer-emails/).
 
 ## Configuration
 
@@ -214,11 +218,15 @@ Every service is defined against an interface (`ProductFormatterInterface`, `Cms
 
 ## Pricing
 
-The plugin is free. The Emporiqa service itself is pay-as-you-go: $0/month base + $0.25/conversation, with $25 of signup credit (about 100 conversations) and no card required at signup. You set a monthly spending limit on the billing page and can raise, lower or remove it. Voice mode (the shopper speaks and hears the answer read aloud) is optional and off by default: a conversation where the shopper speaks costs $0.15 more, charged once, and counts toward that limit. Prices exclude VAT. Enterprise option for catalogs over 100,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
+The plugin is free. The Emporiqa service itself is pay-as-you-go: $0.25 per conversation and $0.15 per AI-drafted email reply you send, with $25 of signup credit (about 100 conversations, once) and no card required at signup. No seat fees, and AI model costs are included. You set a monthly limit on the billing page ($199 for new stores, lower it any time): a ceiling, not a charge, which you can also raise or clear. At the limit the chat is hidden from your shop and charging stops. Voice mode (the shopper speaks and hears the answer read aloud) is optional and off by default: a conversation where the shopper speaks costs $0.15 more, charged once, and counts toward that limit. Prices exclude VAT. Enterprise option for catalogs over 100,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
+
+## Data protection
+
+The application, databases and search index run on Hetzner servers in Germany. Answers are generated by OpenAI in the US under the EU Standard Contractual Clauses; your data is not used for training, and OpenAI keeps requests up to 30 days to check for abuse. Chat history is deleted after 90 days. The [Data Processing Addendum](https://emporiqa.com/dpa/) applies automatically, with no signature needed. A copy signed by Rosel Group can be downloaded from [emporiqa.com/dpa](https://emporiqa.com/dpa/). Sub-processors are listed at [emporiqa.com/subprocessors/](https://emporiqa.com/subprocessors/).
 
 ## Support
 
-Email support@emporiqa.com.
+Email support@emporiqa.com. Rosen Hristov works with every store himself, before and after the sale.
 
 ## License
 
