@@ -252,6 +252,64 @@
             </sw-card>
             {% endblock %}
 
+            {# Links and a chat page the merchant pastes into their own pages #}
+            {% block emporiqa_integration_on_page %}
+            <sw-card v-if="isConnected" :title="$t('emporiqa-integration.onPage.title')">
+                <template #default>
+                    <sw-button
+                        size="small"
+                        @click="showOnPage = !showOnPage"
+                    >
+                        {{ showOnPage ? $t('emporiqa-integration.onPage.hide') : $t('emporiqa-integration.onPage.show') }}
+                    </sw-button>
+
+                    <template v-if="showOnPage">
+                        <p class="emporiqa-integration-index__help-text">
+                            {{ $t('emporiqa-integration.onPage.intro') }}
+                        </p>
+
+                        <sw-alert
+                            v-if="settings.loadOnClick"
+                            :variant="alertVariants.warning"
+                            class="emporiqa-integration-index__result-alert"
+                        >
+                            {{ $t('emporiqa-integration.onPage.loadOnClickWarning') }}
+                        </sw-alert>
+
+                        <div
+                            v-for="snippet in onPageSnippets"
+                            :key="snippet.key"
+                            class="emporiqa-integration-index__url-field"
+                        >
+                            <sw-text-field
+                                :value="snippet.code"
+                                disabled
+                                :label="$t(`emporiqa-integration.onPage.${snippet.key}`)"
+                            />
+                            <sw-button
+                                size="small"
+                                @click="copyText(snippet.code)"
+                            >
+                                {{ $t('emporiqa-integration.onPage.copy') }}
+                            </sw-button>
+                        </div>
+
+                        <p class="emporiqa-integration-index__help-text">
+                            <strong>{{ $t('emporiqa-integration.onPage.whereLabel') }}</strong>
+                            {{ $t('emporiqa-integration.onPage.where') }}
+                        </p>
+                        <p class="emporiqa-integration-index__help-text">
+                            {{ $t('emporiqa-integration.onPage.siteLock') }}
+                            <a :href="securitySettingsUrl" target="_blank" rel="noopener">{{ $t('emporiqa-integration.onPage.openSecurity') }}</a>
+                        </p>
+                        <p class="emporiqa-integration-index__help-text">
+                            <a :href="onPageDocsUrl" target="_blank" rel="noopener">{{ $t('emporiqa-integration.onPage.moreOptions') }}</a>
+                        </p>
+                    </template>
+                </template>
+            </sw-card>
+            {% endblock %}
+
             {# Advanced #}
             {% block emporiqa_integration_advanced %}
             <sw-card :title="$t('emporiqa-integration.settings.advanced.title')">

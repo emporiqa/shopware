@@ -4,7 +4,7 @@
 
 [Emporiqa](https://emporiqa.com) is an AI shop assistant for sales and support, in the chat on your shop and in your shop's customer emails, working with your team: a person can take over any chat. Before the purchase, shoppers describe what they need or upload a photo, and it finds matching products from your catalog, compares them and adds them to the cart. After it, it answers questions from your CMS pages and tells customers where their order is. A signed-in customer sees their own prices, as your shop calculates them, and is greeted by name. When a shopper needs a person, your team takes over the chat. It answers in 65 languages. It also drafts replies to your shop's customer emails (see below). This plugin syncs your product catalog and CMS pages to Emporiqa, embeds the chat widget on your storefront, and exposes endpoints for in-chat cart operations and order tracking.
 
-[![Emporiqa chat widget open on a storefront, answering which noise cancelling headphones under 400 euros suit long flights: it names the Sennheiser Momentum 4 for up to 60 hours with ANC and the Sony WH-1000XM5 at 250 g, and shows both as product cards with photo, price and a Cart button, above a message box with a photo button and a voice button](docs/images/lead-answer.webp)](https://demo.emporiqa.com)
+[![Emporiqa chat on the demo store, answering which headphones are better for long flights, the Sony WH-1000XM5 or the Sennheiser Momentum 4: it picks the Sennheiser for its 60-hour ANC battery, offers to add it to the cart, and shows a comparison table of both with photo, price, brand and battery, above a message box with a photo button and a voice button](docs/images/lead-answer.webp)](https://demo.emporiqa.com)
 
 - **Integration overview**: [emporiqa.com/integrations/shopware/](https://emporiqa.com/integrations/shopware/)
 - **Full documentation**: [emporiqa.com/docs/shopware/](https://emporiqa.com/docs/shopware/) (webhook format reference, CLI and admin API reference, event examples, troubleshooting)
@@ -82,6 +82,8 @@ The **Sync** tab shows how many products and pages a sync sends: products visibl
 **Headless sales channels** (type Headless/API) are not synced: Shopware creates no product page addresses (SEO URLs) for them, so the chat would have no product links to give. Storefront sales channels are synced as usual. Test connection and the Sync tab name any active headless channel that shows products. The chat widget comes with the Storefront theme; on a frontend Shopware does not render, add it with the [embed code](https://emporiqa.com/docs/widget-embedding/).
 
 In-chat cart operations are always enabled. The signed-in shopper's identity reaches the chat only from an uncached endpoint when the chat opens, never through the page or the widget URL.
+
+**Put the chat on your pages** (Settings tab, once connected) gives three snippets to copy: a question link, a link that opens the chat and a chat page. Paste them into a Shopping Experiences HTML element (Shopware 6.6.1 and newer); text elements and product descriptions keep the links. The plugin adds nothing to your storefront by itself; see [Open the chat from your page](https://emporiqa.com/docs/widget-embedding/#open-from-page).
 
 ## AI disclosure
 

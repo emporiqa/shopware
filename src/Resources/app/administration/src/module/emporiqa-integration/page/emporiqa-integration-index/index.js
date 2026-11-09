@@ -89,6 +89,7 @@ Component.register('emporiqa-integration-index', {
             isLoading: false,
             overview: null,
             showCliCommands: false,
+            showOnPage: false,
 
             // Driven bulk sync (progress bar)
             isSyncRunning: false,
@@ -149,6 +150,22 @@ Component.register('emporiqa-integration-index', {
 
         widgetAppearanceUrl() {
             return 'https://emporiqa.com/platform/store-settings/?tab=chat_widget_appearance';
+        },
+
+        securitySettingsUrl() {
+            return 'https://emporiqa.com/platform/store-settings/?tab=security';
+        },
+
+        onPageDocsUrl() {
+            return 'https://emporiqa.com/docs/widget-embedding/#open-from-page';
+        },
+
+        onPageSnippets() {
+            return [
+                { key: 'questionLink', code: '<a href="#emporiqa=Is it waterproof?" class="emporiqa-ask">Is it waterproof?</a>' },
+                { key: 'openLink', code: '<a href="#emporiqa" class="emporiqa-ask">Chat with us</a>' },
+                { key: 'chatPage', code: '<div class="emporiqa-inline"></div>' },
+            ];
         },
 
         availableSalesChannels() {
@@ -581,7 +598,7 @@ Component.register('emporiqa-integration-index', {
                 await navigator.clipboard.writeText(text);
                 if (this.createNotificationSuccess) {
                     this.createNotificationSuccess({
-                        message: this.$t('emporiqa-integration.settings.connection.copyUrl'),
+                        message: this.$t('emporiqa-integration.settings.connection.copied'),
                     });
                 }
             } catch {

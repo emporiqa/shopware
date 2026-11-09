@@ -52,6 +52,7 @@
                 "saveFirst": "Save your settings before testing the connection.",
                 "noProductFound": "No active products found to test with. Using test payload.",
                 "copyUrl": "Copy URL",
+                "copied": "Copied.",
                 "orderTrackingUrlHelp": "Copy this URL into your Emporiqa dashboard under Settings, Integration, Order tracking.",
                 "testSuccess": "Connection successful.",
                 "clockSkew": "Your server clock is off by {minutes} minutes; Emporiqa refuses signatures more than 5 minutes off. Ask your host to enable NTP.",
@@ -138,6 +139,22 @@
             "show": "Show commands",
             "hide": "Hide commands",
             "description": "These commands are available in the Shopware CLI. Each sync command also supports a --dry-run flag."
+        },
+        "onPage": {
+            "title": "Put the chat on your pages",
+            "show": "Show",
+            "hide": "Hide",
+            "intro": "Links and a chat page you paste into your pages open your AI shop assistant; a question link sends its question with one click.",
+            "loadOnClickWarning": "Load the chat only when the visitor clicks is on (Advanced): these links and the chat page do nothing until the visitor has opened the chat once with the chat button.",
+            "questionLink": "Question link (change the question in both places)",
+            "openLink": "Link that opens the chat",
+            "chatPage": "Chat page (the chat shows inside your page)",
+            "copy": "Copy",
+            "whereLabel": "Where to paste it:",
+            "where": "the HTML element in Shopping Experiences (Shopware 6.6.1 and newer) takes all three; text elements and product descriptions keep the links.",
+            "siteLock": "Questions are sent straight away once your shop is listed under Site lock in Emporiqa (Settings > Security); otherwise they are filled in for the shopper to send.",
+            "openSecurity": "Open Security in Emporiqa",
+            "moreOptions": "More options"
         },
         "configLink": {
             "connected": "Connected to Emporiqa (Store ID {storeId}).",

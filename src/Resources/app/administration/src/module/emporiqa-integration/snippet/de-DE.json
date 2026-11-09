@@ -52,6 +52,7 @@
                 "saveFirst": "Speichern Sie Ihre Einstellungen, bevor Sie die Verbindung testen.",
                 "noProductFound": "Keine aktiven Produkte zum Testen gefunden. Verwende Test-Payload.",
                 "copyUrl": "URL kopieren",
+                "copied": "Kopiert.",
                 "orderTrackingUrlHelp": "Kopieren Sie diese URL in Ihr Emporiqa-Dashboard unter „Settings“ → „Integration“ → „Order tracking“. Das Dashboard ist englischsprachig.",
                 "testSuccess": "Verbindung erfolgreich.",
                 "clockSkew": "Die Uhr Ihres Servers geht um {minutes} Minuten falsch; Emporiqa lehnt Signaturen ab, die mehr als 5 Minuten abweichen. Bitten Sie Ihren Hoster, NTP zu aktivieren.",
@@ -138,6 +139,22 @@
             "show": "Befehle anzeigen",
             "hide": "Befehle ausblenden",
             "description": "Diese Befehle sind in der Shopware-CLI verfügbar. Jeder Synchronisierungsbefehl unterstützt auch ein --dry-run-Flag."
+        },
+        "onPage": {
+            "title": "Den Chat auf Ihren Seiten einbinden",
+            "show": "Anzeigen",
+            "hide": "Ausblenden",
+            "intro": "Links und eine Chat-Seite, die Sie in Ihre Seiten einfügen, öffnen Ihren KI-Shop-Assistenten; ein Fragen-Link sendet seine Frage mit einem Klick.",
+            "loadOnClickWarning": "„Den Chat erst beim Klick laden“ ist eingeschaltet (unter „Erweitert“): Diese Links und die Chat-Seite funktionieren erst, wenn der Besucher den Chat einmal über den Chat-Button geöffnet hat.",
+            "questionLink": "Fragen-Link (ändern Sie die Frage an beiden Stellen)",
+            "openLink": "Link, der den Chat öffnet",
+            "chatPage": "Chat-Seite (der Chat erscheint direkt auf Ihrer Seite)",
+            "copy": "Kopieren",
+            "whereLabel": "Wo Sie die Schnipsel einfügen:",
+            "where": "Das HTML-Element der Erlebniswelten (Shopware 6.6.1 und neuer) nimmt alle drei auf; in Textelementen und Produktbeschreibungen bleiben die Links erhalten.",
+            "siteLock": "Fragen werden sofort gesendet, sobald Ihr Shop in Emporiqa unter „Site lock“ eingetragen ist („Settings“ → „Security“); sonst werden sie nur ins Eingabefeld übernommen, und der Kunde sendet sie selbst ab.",
+            "openSecurity": "„Security“ in Emporiqa öffnen",
+            "moreOptions": "Weitere Optionen"
         },
         "configLink": {
             "connected": "Mit Emporiqa verbunden (Shop-ID {storeId}).",

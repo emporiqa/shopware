@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.0 (2026-11-09)
+
+### Added
+- **Put the chat on your pages.** A new card on the Emporiqa page (Settings tab, shown once the shop is connected, folded until you open it) with three snippets to copy: a question link, a link that opens the chat and a chat page, where the chat shows inside your page instead of in the corner. A click on a question link opens the chat and sends the question; until your shop is listed under Site lock in Emporiqa (Settings > Security), the question is filled in for the shopper to send. Paste them into a Shopping Experiences HTML element (Shopware 6.6.1 and newer); text elements and product descriptions keep the links. With Load the chat only when the visitor clicks on, the card warns that the links and the chat page do nothing until the visitor has opened the chat once. The plugin adds nothing to your storefront by itself. Needs the Emporiqa release of November 2026 or later.
+
+### Changed
+- The message after copying now says "Copied." instead of repeating "Copy URL".
+
 ## 1.4.0 (2026-10-16)
 
 ### Added

@@ -1,7 +1,7 @@
 {
     "name": "emporiqa/shopware-plugin",
     "description": "Integrates your Shopware store with Emporiqa, an AI shop assistant for sales and support in your shop's chat and customer emails.",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "type": "shopware-platform-plugin",
     "license": "MIT",
     "authors": [

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.0 (2026-11-09)
+
+### Hinzugefügt
+- **Den Chat auf Ihren Seiten einbinden.** Eine neue Karte auf der Emporiqa-Seite (Tab „Einstellungen“, sichtbar, sobald der Shop verbunden ist, und eingeklappt, bis Sie sie öffnen) mit drei Code-Schnipseln zum Kopieren: ein Fragen-Link, ein Link, der den Chat öffnet, und eine Chat-Seite, bei der der Chat direkt auf Ihrer Seite statt unten in der Ecke erscheint. Ein Klick auf einen Fragen-Link öffnet den Chat und sendet die Frage; solange Ihr Shop in Emporiqa nicht unter „Site lock“ („Settings“ → „Security“) eingetragen ist, wird die Frage nur ins Eingabefeld übernommen, und der Kunde sendet sie selbst ab. Fügen Sie die Schnipsel in ein HTML-Element der Erlebniswelten ein (Shopware 6.6.1 und neuer); in Textelementen und Produktbeschreibungen bleiben die Links erhalten. Ist „Den Chat erst beim Klick laden“ eingeschaltet, weist die Karte darauf hin, dass die Links und die Chat-Seite erst funktionieren, wenn der Besucher den Chat einmal geöffnet hat. Das Plugin selbst fügt Ihrer Storefront nichts hinzu. Setzt die Emporiqa-Version von November 2026 oder später voraus.
+
+### Geändert
+- Die Meldung nach dem Kopieren lautet jetzt „Kopiert.“ statt „URL kopieren“.
+
 ## 1.4.0 (2026-10-16)
 
 ### Hinzugefügt
