@@ -10,6 +10,7 @@
 - **Vollständige Dokumentation**: [emporiqa.com/de/docs/shopware/](https://emporiqa.com/de/docs/shopware/) (Referenz des Webhook-Formats, Referenz zu CLI und Admin-API, Beispiele zu Events, Fehlersuche)
 - **Funktionen**: [emporiqa.com/de/features/](https://emporiqa.com/de/features/) · **FAQ**: [emporiqa.com/de/faq/](https://emporiqa.com/de/faq/) · **Preise**: [emporiqa.com/de/pricing/](https://emporiqa.com/de/pricing/)
 - **Live-Demo**: [demo.emporiqa.com](https://demo.emporiqa.com) und ein [30-Sekunden-Video](https://www.youtube.com/watch?v=qck3AqYSFQw). Diese Demo verkauft Elektronik; in Ihrem Shop antwortet der Chat aus Ihrem eigenen Katalog, eine Kosmetikkundin fragt dort etwa nach „einer parfümfreien Feuchtigkeitscreme für empfindliche Haut unter 30 €“.
+- **Den Chat auf Ihren Seiten einbinden**: Fügen Sie einen Fragen-Link, einen Chat-Link oder eine Chat-Seite aus dem Tab „Einstellungen“ in Ihre Erlebniswelten ein (siehe [Konfiguration](#konfiguration)).
 - **Einrichten mit Claude oder ChatGPT**: Verbinden Sie Claude oder ChatGPT mit Emporiqa: Claude bzw. ChatGPT legt dann Ihren Shop an, richtet den Chat ein und führt Sie durch die Installation ([emporiqa.com/docs/ai-assistants/](https://emporiqa.com/docs/ai-assistants/)). Das Plugin installieren und auf „Go live“ klicken Sie selbst.
 
 ## Voraussetzungen

@@ -10,6 +10,7 @@
 - **Full documentation**: [emporiqa.com/docs/shopware/](https://emporiqa.com/docs/shopware/) (webhook format reference, CLI and admin API reference, event examples, troubleshooting)
 - **Features**: [emporiqa.com/features/](https://emporiqa.com/features/) · **FAQ**: [emporiqa.com/faq/](https://emporiqa.com/faq/) · **Pricing**: [emporiqa.com/pricing/](https://emporiqa.com/pricing/)
 - **Live demo**: [demo.emporiqa.com](https://demo.emporiqa.com) and a [30-second video](https://www.youtube.com/watch?v=y7ARSIUxuXI). That demo sells electronics; on your shop it answers from your own catalog, so a cosmetics shopper can ask for "a fragrance-free moisturiser for sensitive skin under $30" the same way.
+- **Put the chat on your pages**: copy a question link, a chat link or a chat page from the Settings tab into your Shopping Experiences (see [Configuration](#configuration)).
 - **Set it up from Claude or ChatGPT**: connect your assistant and it creates your store, sets up the chat and walks you through the install ([emporiqa.com/docs/ai-assistants/](https://emporiqa.com/docs/ai-assistants/)). You install the plugin and press Go live yourself.
 
 ## Requirements
